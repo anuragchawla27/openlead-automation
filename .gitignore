@@ -1,0 +1,5 @@
+.env
+n8n_data/
+*.json.bak
+credentials*.json
+service-account*.json
