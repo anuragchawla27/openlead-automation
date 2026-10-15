@@ -4,3 +4,4 @@
 - Webmail addresses are labelled FREE_WEBMAIL, not DISPOSABLE.
 - Emails must appear verbatim in the page text or are set to null.
 - SerpAPI free plan: 250 searches. Dev ~100, QA ~60, reserve ~90. Cache all responses.
+Intake uses a Groq parse step plus a code normalizer. Defaults: 20 leads, B2B size 11-50. Track B roles must be the role sought (prompt rule plus code persona filter). Campaign ID hashes a lowercased, sorted config, so the same normalized config always gives the same ID

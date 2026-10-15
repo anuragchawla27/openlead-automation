@@ -1,0 +1,107 @@
+{
+  "name": "openlead-automation",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "OpenLead Campaign",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "campaign_prompt",
+              "fieldType": "textarea",
+              "placeholder": "Find 30 IT services companies in Pune, founders and CTOs only"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -608,
+        -208
+      ],
+      "id": "e7e04173-6df3-44e3-9dba-84cd8a0abace",
+      "name": "Intake Form",
+      "webhookId": "75b54723-1452-4cb7-8171-8c5919f5b97c"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-120b\",\n  temperature: 0,\n  messages: [\n    { role: \"system\", content: \"Extract campaign parameters from the user's request. Use only what the user states. Use null or an empty array for anything not stated. task_category: B2B_LEAD_GEN for finding companies/clients, TALENT_RECRUITMENT for finding people seeking AI/ML/automation roles, otherwise CUSTOM_RESEARCH. company_size_range must be one of the enum values; use ALL if not stated. For TALENT_RECRUITMENT, target_roles must be the role or skill being sought (for example \\\"AI automation intern\\\"), never who the person is (never \\\"student\\\" or \\\"fresher\\\"). Output JSON only.\" },\n    { role: \"user\", content: $json.campaign_prompt }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"campaign_parse\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"task_category\",\"target_industry\",\"target_geography\",\"company_size_range\",\"target_roles\",\"exclusion_keywords\",\"max_leads_limit\",\"min_lead_score\"],\n    properties: {\n      task_category: { type: \"string\", enum: [\"B2B_LEAD_GEN\",\"TALENT_RECRUITMENT\",\"CUSTOM_RESEARCH\"] },\n      target_industry: { type: [\"string\",\"null\"] },\n      target_geography: { type: [\"string\",\"null\"] },\n      company_size_range: { type: \"string\", enum: [\"1-10\",\"11-50\",\"51-200\",\"201-500\",\"501+\",\"ALL\"] },\n      target_roles: { type: \"array\", items: { type: \"string\" } },\n      exclusion_keywords: { type: \"array\", items: { type: \"string\" } },\n      max_leads_limit: { type: [\"integer\",\"null\"] },\n      min_lead_score: { type: [\"integer\",\"null\"] }\n    }\n  } } }\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -400,
+        -208
+      ],
+      "id": "622d01c4-3aea-4058-bca1-372825b086ae",
+      "name": "Parse Prompt (Groq)",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "xyIMZCkNAAF5GoZc",
+          "name": "Groq API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ROLE_DEFAULTS = {\n  B2B_LEAD_GEN: [\"Founder\", \"CEO\", \"CTO\", \"Business Development Director\"],\n  TALENT_RECRUITMENT: [\"AI Automation Intern\", \"AI Engineer Intern\"],\n  CUSTOM_RESEARCH: [\"Founder\"]\n};\nconst SIZES = [\"1-10\", \"11-50\", \"51-200\", \"201-500\", \"501+\", \"ALL\"];\nconst titleCase = s => s.replace(/\\s+/g, ' ').trim().split(' ').map(w => w.length <= 3 && w === w.toUpperCase() ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');\nconst prompt = $('Intake Form').first().json.campaign_prompt;\n\n// 0. Reject empty prompts (ERR_EMPTY_PROMPT)\nif (!prompt || !String(prompt).trim()) {\n  return [{ json: { config_valid: false, config_errors: ['ERR_EMPTY_PROMPT'], source_prompt: prompt || '' } }];\n}\n\n// 1. Parse the model output (safe even if the HTTP node failed)\nlet p;\ntry {\n  const txt = $input.first().json.choices[0].message.content.replace(/```json|```/g, '').trim();\n  p = JSON.parse(txt);\n} catch (e) {\n  return [{ json: { config_valid: false, config_errors: ['ERR_PARSE_FAILED: ' + e.message], source_prompt: prompt } }];\n}\n\nconst errors = [], clamped = [];\n\n// 2. Category\nconst category = p.task_category;\nif (!ROLE_DEFAULTS[category]) errors.push('ERR_BAD_CATEGORY');\n\n// 3. Bounds (FR-02)\nlet max = Number.isInteger(p.max_leads_limit) ? p.max_leads_limit : 20;\nif (max > 100) { max = 100; clamped.push('max_leads_limit'); }\nif (max < 1)   { max = 1;   clamped.push('max_leads_limit'); }\nlet minScore = Number.isInteger(p.min_lead_score) ? p.min_lead_score : 80;\nif (minScore > 100) { minScore = 100; clamped.push('min_lead_score'); }\nif (minScore < 1)   { minScore = 1;   clamped.push('min_lead_score'); }\n\n// 4. Defaults + normalization\nconst industry  = titleCase(p.target_industry  || 'Information Technology Services');\nconst geography = titleCase(p.target_geography || 'India');\nlet size = SIZES.includes(p.company_size_range) ? p.company_size_range : 'ALL';\nif (category === 'B2B_LEAD_GEN' && size === 'ALL') size = '11-50';\nlet roles = (p.target_roles || []).map(r => titleCase(String(r))).filter(Boolean);\n\n// Track B: drop persona words (who the person is) so queries use the role sought\nconst PERSONA = new Set(['student','students','fresher','freshers','candidate','candidates','people','person','developer','developers','intern','interns']);\nif (category === 'TALENT_RECRUITMENT') roles = roles.filter(r => !PERSONA.has(r.toLowerCase()));\n\nif (roles.length === 0 && ROLE_DEFAULTS[category]) roles = ROLE_DEFAULTS[category];\nconst exclusions = [...new Set((p.exclusion_keywords || []).map(x => String(x).trim().toLowerCase()).filter(Boolean))];\n\n// 5. Contradiction check (FR-02)\nfor (const x of exclusions) {\n  if (industry.toLowerCase().includes(x) || roles.some(r => r.toLowerCase().includes(x))) {\n    errors.push(`ERR_CONTRADICTION: exclusion \"${x}\" overlaps target industry/roles`);\n  }\n}\n\n// 6. Query dorks (FR-03)\nconst role0 = roles[0] || '';\nlet compiled = [];\nif (category === 'B2B_LEAD_GEN') {\n  compiled = [\n    `\"${industry}\" (\"IT services\" OR \"software company\") \"${geography}\" -site:linkedin.com/jobs`,\n    `site:clutch.co/profile \"${industry}\" \"${geography}\"`\n  ];\n} else if (category === 'TALENT_RECRUITMENT') {\n  compiled = [\n    `site:reddit.com (intitle:\"looking for\" OR intitle:\"seeking\") \"${role0}\"`,\n    `\"seeking ${role0}\" (\"portfolio\" OR \"github\") -site:linkedin.com/jobs`\n  ];\n} else {\n  compiled = [`\"${industry}\" \"${geography}\"`];\n}\n\n// 7. Deterministic campaign ID (case- and order-insensitive)\nconst core = {\n  category,\n  industry: industry.toLowerCase(),\n  geography: geography.toLowerCase(),\n  size,\n  roles: roles.map(r => r.toLowerCase()).sort(),\n  exclusions: [...exclusions].sort(),\n  max,\n  minScore\n};\nlet h = 5381;\nfor (const ch of JSON.stringify(core)) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;\nconst campaign_id = `CMP-${new Date().getFullYear()}-${h.toString(36).toUpperCase().padStart(4, '0').slice(-4)}`;\nif (!/^CMP-[0-9]{4}-[A-Z0-9]{4}$/.test(campaign_id)) errors.push('ERR_BAD_CAMPAIGN_ID');\n\nreturn [{ json: {\n  campaign_id, task_category: category, target_industry: industry, target_geography: geography,\n  company_size_range: size, target_roles: roles, exclusion_keywords: exclusions,\n  max_leads_limit: max, min_lead_score: minScore, compiled_queries: compiled,\n  clamped_fields: clamped, config_valid: errors.length === 0, config_errors: errors,\n  source_prompt: prompt, created_at: new Date().toISOString()\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -208
+      ],
+      "id": "1074b997-1f89-4a05-8b1e-32c7b60f2573",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Intake Form": {
+      "main": [
+        [
+          {
+            "node": "Parse Prompt (Groq)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Prompt (Groq)": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8188c643-efba-49f5-81e7-2bae992cb298",
+  "meta": {
+    "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
+  },
+  "id": "KuYvxaUX6vyL0HWh",
+  "tags": []
+}
