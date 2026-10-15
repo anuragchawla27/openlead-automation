@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CampaignConfiguration",
+  "type": "object",
+  "required": ["campaign_id", "task_category", "target_geography", "target_roles", "max_leads_limit", "min_lead_score"],
+  "properties": {
+    "campaign_id": { "type": "string", "pattern": "^CMP-[0-9]{4}-[A-Z0-9]{4}$" },
+    "task_category": { "type": "string", "enum": ["B2B_LEAD_GEN", "TALENT_RECRUITMENT", "CUSTOM_RESEARCH"] },
+    "target_industry": { "type": "string", "default": "Information Technology Services" },
+    "target_geography": { "type": "string", "default": "India" },
+    "company_size_range": { "type": "string", "enum": ["1-10", "11-50", "51-200", "201-500", "501+", "ALL"] },
+    "target_roles": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "exclusion_keywords": { "type": "array", "items": { "type": "string" } },
+    "max_leads_limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "min_lead_score": { "type": "integer", "minimum": 1, "maximum": 100, "default": 80 }
+  }
+}

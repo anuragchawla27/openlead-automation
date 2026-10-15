@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["extraction_successful", "company_name", "official_website", "industry_sector", "headquarters_location", "company_description", "estimated_employee_range", "key_decision_maker", "extracted_evidence_snippets", "confidence_level"],
+  "properties": {
+    "extraction_successful": { "type": "boolean" },
+    "company_name": { "type": ["string", "null"] },
+    "official_website": { "type": ["string", "null"] },
+    "industry_sector": { "type": ["string", "null"] },
+    "headquarters_location": { "type": ["string", "null"] },
+    "company_description": { "type": ["string", "null"] },
+    "estimated_employee_range": { "type": "string", "enum": ["1-10", "11-50", "51-200", "201-500", "501+", "UNKNOWN"] },
+    "key_decision_maker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["full_name", "designation", "public_business_email", "linkedin_profile_url"],
+      "properties": {
+        "full_name": { "type": ["string", "null"] },
+        "designation": { "type": ["string", "null"] },
+        "public_business_email": { "type": ["string", "null"] },
+        "linkedin_profile_url": { "type": ["string", "null"] }
+      }
+    },
+    "extracted_evidence_snippets": { "type": "array", "items": { "type": "string" } },
+    "confidence_level": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] }
+  }
+}
