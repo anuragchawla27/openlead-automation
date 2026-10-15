@@ -39,8 +39,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -400,
-        -208
+        -160,
+        -240
       ],
       "id": "622d01c4-3aea-4058-bca1-372825b086ae",
       "name": "Parse Prompt (Groq)",
@@ -61,20 +61,577 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -192,
-        -208
+        48,
+        -240
       ],
       "id": "1074b997-1f89-4a05-8b1e-32c7b60f2573",
-      "name": "Code in JavaScript"
+      "name": "Parameter Normalizer"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "968f8a63-37ab-49bf-a2e3-c1b68029391c",
+              "leftValue": "={{ $json.campaign_prompt.trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -400,
+        -208
+      ],
+      "id": "d01ec838-947c-4639-8826-5680d0802e7d",
+      "name": "Prompt Not Empty"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a92b1eea-aa70-41ab-80ac-e732c2ed087c",
+              "leftValue": "={{ $json.config_valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        224,
+        -208
+      ],
+      "id": "562bd587-7143-47f7-8709-805069f6a024",
+      "name": "Config Valid"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $input.first().json;\nconst MAX_PAGES = 1; // dev: 1 page per query. Never 5 on the free plan.\nconst out = [];\nfor (const q of cfg.compiled_queries) {\n  for (let page = 0; page < MAX_PAGES; page++) {\n    out.push({ json: {\n      campaign_id: cfg.campaign_id,\n      task_category: cfg.task_category,\n      query: q,\n      start: page * 10,\n      max_leads_limit: cfg.max_leads_limit\n    } });\n  }\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        -304
+      ],
+      "id": "fcd95101-c3d9-4b6d-9863-18b2caeeaa84",
+      "name": "Split Queries"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.query }}"
+            },
+            {
+              "name": "start",
+              "value": "={{ $json.start}}"
+            },
+            {
+              "name": "num",
+              "value": "10"
+            },
+            {
+              "name": "gl",
+              "value": "in"
+            },
+            {
+              "name": "hl",
+              "value": "en"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        640,
+        -304
+      ],
+      "id": "bdec6e8a-87dd-4212-84c8-e0de9c70d3da",
+      "name": "SerpAPI Request",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "executeOnce": true,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "7pjEvAJUEQHtxKtG",
+          "name": "SerpAPI"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const BLOCK = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com','youtube.com','wikipedia.org','glassdoor.com','indeed.com','naukri.com','justdial.com','ambitionbox.com','crunchbase.com','scribd.com','goodfirms.co','builtinpune.in','clutch.co','sulekha.com','indiamart.com','quora.com','medium.com','reddit.com','trustpilot.com','g2.com','topdevelopers.co','designrush.com','softwaresuggest.com','techbehemoths.com'];\nconst LIST_TITLE = /\\b(list of|reviews?|directory)\\b|\\bcompanies\\b|\\b(top|best)\\s+\\d+/i;\nconst cfg = $('Split Queries').first().json;\nconst hash = s => { let h = 5381; for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };\nconst seen = new Set(), out = [], skipLog = [];\nlet errors = 0;\n\nfor (const item of $input.all()) {\n  if (item.json.error || !Array.isArray(item.json.organic_results)) { errors++; continue; }\n  const query = item.json.search_parameters?.q || '';\n  for (const r of item.json.organic_results) {\n    const m = String(r.link || '').match(/^(https?):\\/\\/([^\\/?#:]+)/i);\n    if (!m) { skipLog.push({ link: r.link, reason: 'BAD_URL' }); continue; }\n    const host = m[2].toLowerCase().replace(/^www\\./, '');\n    if (BLOCK.some(b => host === b || host.endsWith('.' + b))) { skipLog.push({ link: r.link, reason: 'BLOCKED_DOMAIN' }); continue; }\n    if (LIST_TITLE.test(r.title || '')) { skipLog.push({ link: r.link, reason: 'LIST_TITLE' }); continue; }\n    if (seen.has(host)) { skipLog.push({ link: r.link, reason: 'DUPLICATE_DOMAIN' }); continue; }\n    seen.add(host);\n    out.push({ json: {\n      result_id: 'RES-' + hash(host),\n      campaign_id: cfg.campaign_id,\n      source_url: r.link,\n      normalized_domain: host,\n      source_platform: 'google_serp',\n      title: r.title || null,\n      snippet: r.snippet || null,\n      query,\n      discovery_time: new Date().toISOString(),\n      scrape_status: 'PENDING'\n    } });\n    if (out.length >= cfg.max_leads_limit) break;\n  }\n}\nif (out.length === 0) return [{ json: { no_hits: true, errors, skipped: skipLog.length, skip_log: skipLog, campaign_id: cfg.campaign_id } }];\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        -304
+      ],
+      "id": "4c72d783-759e-4e57-8ffb-2f82e28d2eb9",
+      "name": "Extract Hits"
     }
   ],
-  "pinData": {},
+  "pinData": {
+    "SerpAPI Request": [
+      {
+        "json": {
+          "search_metadata": {
+            "id": "6ad0d0af1389b1e81b4fb8ee",
+            "status": "Success",
+            "json_endpoint": "https://serpapi.com/searches/G6aMuNYfYUiERAR6IKQvxWexcVQTtQ26Awh1F1Wr2D8/6ad0d0af1389b1e81b4fb8ee.json",
+            "markdown_endpoint": "https://serpapi.com/searches/G6aMuNYfYUiERAR6IKQvxWexcVQTtQ26Awh1F1Wr2D8/6ad0d0af1389b1e81b4fb8ee.md",
+            "pixel_position_endpoint": "https://serpapi.com/searches/G6aMuNYfYUiERAR6IKQvxWexcVQTtQ26Awh1F1Wr2D8/6ad0d0af1389b1e81b4fb8ee.json_with_pixel_position",
+            "created_at": "2026-10-15 13:10:07 UTC",
+            "processed_at": "2026-10-15 13:10:07 UTC",
+            "google_url": "https://www.google.com/search?q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&oq=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&hl=en&gl=in&sourceid=chrome&ie=UTF-8",
+            "raw_html_file": "https://serpapi.com/searches/G6aMuNYfYUiERAR6IKQvxWexcVQTtQ26Awh1F1Wr2D8/6ad0d0af1389b1e81b4fb8ee.html",
+            "total_time_taken": 37.17
+          },
+          "search_parameters": {
+            "engine": "google",
+            "q": "\"IT Services\" (\"IT services\" OR \"software company\") \"Pune\" -site:linkedin.com/jobs",
+            "google_domain": "google.com",
+            "hl": "en",
+            "gl": "in",
+            "start": 0,
+            "device": "desktop"
+          },
+          "search_information": {
+            "query_displayed": "\"IT Services\" (\"IT services\" OR \"software company\") \"Pune\" -site:linkedin.com/jobs",
+            "total_results": 6510000,
+            "time_taken_displayed": 0.18,
+            "organic_results_state": "Results for exact spelling"
+          },
+          "organic_results": [
+            {
+              "position": 1,
+              "title": "Managed IT Services Pune | Cloud, AI & Cybersecurity",
+              "link": "https://synoptek.com/location/pune/",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESXgHrOzAV2InuUdlp0L6mMuPQz2u6jipw4Z0jylsNGC9UMsVlR52jTxMXAfXEeWpbbS1bKXW0YrZ29RISoCFnkirnZwrRD3ZpblzVol5FSBkk2cDWnPOaLtNnibu8K_g&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECBsQAQ&uoh=1",
+              "displayed_link": "https://synoptek.com › About › Locations",
+              "favicon": "https://serpapi.com/images/i/UklGRuoAAABXRUJQVlA4IN4AAABwBQCdASocABwAPtEutFooIagoGAEAGglqAMURjM6vkQ8k3Wk0RGPTSz9dQIGKfZntbD4AAP7-wjE5YKRdgv1siHe9_Gp_KLjH4i_1hq-PeHgfCXtMD5DqfrL_8RnUGeePdgxV7rpda0eXT6iFFcHVwNOCqbYJRg3-P3R-fAGP9Lo21Iyq79Yz_nyLAeIuAJr5d63WMGlDOWhFaQTOrUeL11evsJd7XOou9TEzwY9n1b79Whuthi9aSQ3IcL99Pgi-f0UEDEOucE2hQGh3gMF98ZxKookI0lH_-QBcAAA.webp",
+              "snippet": "Synoptek delivers Managed IT Services in Pune for software, manufacturing, life sciences, and financial services businesses. AI, cybersecurity, ERP, cloud, ...",
+              "snippet_highlighted_words": [
+                "IT Services",
+                "Pune"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "Synoptek delivers Managed IT Services in Pune for software, manufacturing, life sciences, and financial services businesses. AI, cybersecurity, ERP, cloud, ...",
+                  "source_info_link": "https://synoptek.com/location/pune/",
+                  "icon": "https://serpapi.com/images/i/UklGRuoAAABXRUJQVlA4IN4AAABwBQCdASocABwAPtEutFooIagoGAEAGglqAMURjM6vkQ8k3Wk0RGPTSz9dQIGKfZntbD4AAP7-wjE5YKRdgv1siHe9_Gp_KLjH4i_1hq-PeHgfCXtMD5DqfrL_8RnUGeePdgxV7rpda0eXT6iFFcHVwNOCqbYJRg3-P3R-fAGP9Lo21Iyq79Yz_nyLAeIuAJr5d63WMGlDOWhFaQTOrUeL11evsJd7XOou9TEzwY9n1b79Whuthi9aSQ3IcL99Pgi-f0UEDEOucE2hQGh3gMF98ZxKookI0lH_-QBcAAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=Co0BL2dvdG8_dXJsPUNBRVNYZ0hyT3pBVkRHMzBHM214U1dqb3BhZWJHVWhGb1NpZzRGUHhFS3pZUUw2QVVmX2hibVpOLU5INnRub2NmRl9MNnpjSXpPSHBQNGQ1WU11Y1lxU0w3ZjF6TnJremp2c2RQM2FIdEdRMG9oZ1V5Z0oxQmswbVpJVHc0UG9kZ3NJEgQaAggAGuoDEgAaACIAKgAyBggDEgJpbjoAQgQIARAASgBaAHIAegCCQMYDCAAQABgAIAAqCQoCaXQVeBnFQCoPCghzZXJ2aWNlcxXaT8RAKgkKAml0FaOPm0AqDwoIc2VydmljZXMV7ljcQDKNAS9nb3RvP3VybD1DQUVTWGdIck96QVZERzMwRzNteFNXam9wYWViR1VoRm9TaWc0RlB4RUt6WVFMNkFVZl9oYm1aTi1OSDZ0bm9jZkZfTDZ6Y0l6T0hwUDRkNVlNdWNZcVNMN2Yxek5ya3pqdnNkUDNhSHRHUTBvaGdVeWdKMUJrMG1aSVR3NFBvZGdzSTo_TWFuYWdlZCA8Yj5JVCBTZXJ2aWNlcyBQdW5lPC9iPiB8IENsb3VkLCBBSSAmYW1wOyBDeWJlcnNlY3VyaXR5QrIBU3lub3B0ZWsgZGVsaXZlcnMgTWFuYWdlZCA8Yj5JVCBTZXJ2aWNlczwvYj4gaW4gPGI-UHVuZTwvYj4gZm9yIHNvZnR3YXJlLCBtYW51ZmFjdHVyaW5nLCBsaWZlIHNjaWVuY2VzLCBhbmQgZmluYW5jaWFsIHNlcnZpY2VzIGJ1c2luZXNzZXMuIEFJLCBjeWJlcnNlY3VyaXR5LCBFUlAsIGNsb3VkLCZuYnNwOy4uLiICEAFIAFgAaAA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=Co0BL2dvdG8_dXJsPUNBRVNYZ0hyT3pBVkRHMzBHM214U1dqb3BhZWJHVWhGb1NpZzRGUHhFS3pZUUw2QVVmX2hibVpOLU5INnRub2NmRl9MNnpjSXpPSHBQNGQ1WU11Y1lxU0w3ZjF6TnJremp2c2RQM2FIdEdRMG9oZ1V5Z0oxQmswbVpJVHc0UG9kZ3NJEgQaAggAGuoDEgAaACIAKgAyBggDEgJpbjoAQgQIARAASgBaAHIAegCCQMYDCAAQABgAIAAqCQoCaXQVeBnFQCoPCghzZXJ2aWNlcxXaT8RAKgkKAml0FaOPm0AqDwoIc2VydmljZXMV7ljcQDKNAS9nb3RvP3VybD1DQUVTWGdIck96QVZERzMwRzNteFNXam9wYWViR1VoRm9TaWc0RlB4RUt6WVFMNkFVZl9oYm1aTi1OSDZ0bm9jZkZfTDZ6Y0l6T0hwUDRkNVlNdWNZcVNMN2Yxek5ya3pqdnNkUDNhSHRHUTBvaGdVeWdKMUJrMG1aSVR3NFBvZGdzSTo_TWFuYWdlZCA8Yj5JVCBTZXJ2aWNlcyBQdW5lPC9iPiB8IENsb3VkLCBBSSAmYW1wOyBDeWJlcnNlY3VyaXR5QrIBU3lub3B0ZWsgZGVsaXZlcnMgTWFuYWdlZCA8Yj5JVCBTZXJ2aWNlczwvYj4gaW4gPGI-UHVuZTwvYj4gZm9yIHNvZnR3YXJlLCBtYW51ZmFjdHVyaW5nLCBsaWZlIHNjaWVuY2VzLCBhbmQgZmluYW5jaWFsIHNlcnZpY2VzIGJ1c2luZXNzZXMuIEFJLCBjeWJlcnNlY3VyaXR5LCBFUlAsIGNsb3VkLCZuYnNwOy4uLiICEAFIAFgAaAA",
+              "source": "Synoptek"
+            },
+            {
+              "position": 2,
+              "title": "List of top IT Services & Consulting companies in Pune",
+              "link": "https://www.naukri.com/it-services-and-consulting-companies-in-pune-ind109l139",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESiQEB6zswFQOW4LOJPCQjSF9jtEulQ9cJaB6Xh0HxDD__xMrVENuq_OwTcqAtmWU4QsOIKOul_S7m3-_Eva18XyAASFikurrjMLjcWXAM6CZaWrFPG5c6h4zFve7FdmCrJJt9Xjd3s2aAmrABeqiExjPX3Kxve-qpSHWMRFpz18IJsYA1JSmGIPCUGA&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECBoQAQ&uoh=1",
+              "displayed_link": "https://www.naukri.com › it-services-and-consulting-co...",
+              "favicon": "https://serpapi.com/images/i/UklGRp4BAABXRUJQVlA4IJIBAABwCACdASocABwAPtEutFooIagoGAEAGglsAJ0yhHmfmduGcA2ymezdaf6AHSer8Cpr10KeW9T1WzoP_EuXRUtAPA_dp3lI20yqm9AAAP72E0TJXaYL2PNCe4iW0hQE7T2QnXFFpP-dUon7JTZkHUf9vMq4kkkv3T7S1dSmod1nlyzu4cLxB4Qlm5J81Eh_4HhD6zisis2ZQmMqRpYm0ocSPYYLfSwMZj7-Z-KlUpwxobnrIoktzUBl_oZkHQcsLJTnM_yQCi2i9XpHQfk5Tzf-4tV7-YKscVRJSqLCzvNWuH55yT1lrnywQZjk5Q--iGKD_CCxSkoKqAi02bu_j1Jz-at0xkUsk9Wltfz8qG0NwzldUytzXgltei-airGrvU6LOOscNP_NJRVcKPqBi-a3TrvfRGEzahB2ZmuMy3p34gf6DyHlwHote4hNGr_TcFZ0m3rKpj2GIkDhPKnPkaqb3nF45QVGhUfB083Pl_8h7V4dV86sCRUXn3ng3pl8dKxeh_RAZzzHq3Uk4HL4JmLgAAA.webp",
+              "snippet": "List of the top IT Services & Consulting companies in Pune such as Shipco It, Kalpak Solutions, Capgemini, Epps Infotech, Rabbit And Tortoise Technology ...",
+              "snippet_highlighted_words": [
+                "IT Services",
+                "Pune"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "List of the top IT Services & Consulting companies in Pune such as Shipco It, Kalpak Solutions, Capgemini, Epps Infotech, Rabbit And Tortoise Technology ...",
+                  "source_info_link": "https://www.naukri.com/it-services-and-consulting-companies-in-pune-ind109l139",
+                  "icon": "https://serpapi.com/images/i/UklGRp4BAABXRUJQVlA4IJIBAABwCACdASocABwAPtEutFooIagoGAEAGglsAJ0yhHmfmduGcA2ymezdaf6AHSer8Cpr10KeW9T1WzoP_EuXRUtAPA_dp3lI20yqm9AAAP72E0TJXaYL2PNCe4iW0hQE7T2QnXFFpP-dUon7JTZkHUf9vMq4kkkv3T7S1dSmod1nlyzu4cLxB4Qlm5J81Eh_4HhD6zisis2ZQmMqRpYm0ocSPYYLfSwMZj7-Z-KlUpwxobnrIoktzUBl_oZkHQcsLJTnM_yQCi2i9XpHQfk5Tzf-4tV7-YKscVRJSqLCzvNWuH55yT1lrnywQZjk5Q--iGKD_CCxSkoKqAi02bu_j1Jz-at0xkUsk9Wltfz8qG0NwzldUytzXgltei-airGrvU6LOOscNP_NJRVcKPqBi-a3TrvfRGEzahB2ZmuMy3p34gf6DyHlwHote4hNGr_TcFZ0m3rKpj2GIkDhPKnPkaqb3nF45QVGhUfB083Pl_8h7V4dV86sCRUXn3ng3pl8dKxeh_RAZzzHq3Uk4HL4JmLgAAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CsgBL2dvdG8_dXJsPUNBRVNpUUVCNnpzd0ZVTVBBYllxWWZ3Y3h1T01IWkpYdjVoTDNfaDFJLWhRUVpPNHhXeV9HTC12NThZcjhvdk5NcTJYRFdPV21sSDMtczh0TUtKWWYtN0U3MUxOQmlGRFllTUNOTEFsUGN3RVVBa2hkRHpxRWYwV2lmWXNxXzVvaExtMGgzYVoxUTVRZ3hWMHZCQ1UxNnc0eWVwdU4tdUxUVEplSFUxYVdkOTdlTXhNM21vN1NKSW9MUklFSWcSBBoCCAAarwQSABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJAiwQIABAAGAAgACoJCgJpdBU0NtVAKg8KCHNlcnZpY2VzFe4b0UAqCQoCaXQVrtPOQCoPCghzZXJ2aWNlcxX0xolAMsgBL2dvdG8_dXJsPUNBRVNpUUVCNnpzd0ZVTVBBYllxWWZ3Y3h1T01IWkpYdjVoTDNfaDFJLWhRUVpPNHhXeV9HTC12NThZcjhvdk5NcTJYRFdPV21sSDMtczh0TUtKWWYtN0U3MUxOQmlGRFllTUNOTEFsUGN3RVVBa2hkRHpxRWYwV2lmWXNxXzVvaExtMGgzYVoxUTVRZ3hWMHZCQ1UxNnc0eWVwdU4tdUxUVEplSFUxYVdkOTdlTXhNM21vN1NKSW9MUklFSWc6SExpc3Qgb2YgdG9wIDxiPklUIFNlcnZpY2VzPC9iPiAmYW1wOyBDb25zdWx0aW5nIGNvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPkKzAUxpc3Qgb2YgdGhlIHRvcCA8Yj5JVCBTZXJ2aWNlczwvYj4gJmFtcDsgQ29uc3VsdGluZyBjb21wYW5pZXMgaW4gPGI-UHVuZTwvYj4gc3VjaCBhcyBTaGlwY28gSXQsIEthbHBhayBTb2x1dGlvbnMsIENhcGdlbWluaSwgRXBwcyBJbmZvdGVjaCwgUmFiYml0IEFuZCBUb3J0b2lzZSBUZWNobm9sb2d5Jm5ic3A7Li4uIgIQAUgAWABoAA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CsgBL2dvdG8_dXJsPUNBRVNpUUVCNnpzd0ZVTVBBYllxWWZ3Y3h1T01IWkpYdjVoTDNfaDFJLWhRUVpPNHhXeV9HTC12NThZcjhvdk5NcTJYRFdPV21sSDMtczh0TUtKWWYtN0U3MUxOQmlGRFllTUNOTEFsUGN3RVVBa2hkRHpxRWYwV2lmWXNxXzVvaExtMGgzYVoxUTVRZ3hWMHZCQ1UxNnc0eWVwdU4tdUxUVEplSFUxYVdkOTdlTXhNM21vN1NKSW9MUklFSWcSBBoCCAAarwQSABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJAiwQIABAAGAAgACoJCgJpdBU0NtVAKg8KCHNlcnZpY2VzFe4b0UAqCQoCaXQVrtPOQCoPCghzZXJ2aWNlcxX0xolAMsgBL2dvdG8_dXJsPUNBRVNpUUVCNnpzd0ZVTVBBYllxWWZ3Y3h1T01IWkpYdjVoTDNfaDFJLWhRUVpPNHhXeV9HTC12NThZcjhvdk5NcTJYRFdPV21sSDMtczh0TUtKWWYtN0U3MUxOQmlGRFllTUNOTEFsUGN3RVVBa2hkRHpxRWYwV2lmWXNxXzVvaExtMGgzYVoxUTVRZ3hWMHZCQ1UxNnc0eWVwdU4tdUxUVEplSFUxYVdkOTdlTXhNM21vN1NKSW9MUklFSWc6SExpc3Qgb2YgdG9wIDxiPklUIFNlcnZpY2VzPC9iPiAmYW1wOyBDb25zdWx0aW5nIGNvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPkKzAUxpc3Qgb2YgdGhlIHRvcCA8Yj5JVCBTZXJ2aWNlczwvYj4gJmFtcDsgQ29uc3VsdGluZyBjb21wYW5pZXMgaW4gPGI-UHVuZTwvYj4gc3VjaCBhcyBTaGlwY28gSXQsIEthbHBhayBTb2x1dGlvbnMsIENhcGdlbWluaSwgRXBwcyBJbmZvdGVjaCwgUmFiYml0IEFuZCBUb3J0b2lzZSBUZWNobm9sb2d5Jm5ic3A7Li4uIgIQAUgAWABoAA",
+              "source": "Naukri.com"
+            },
+            {
+              "position": 3,
+              "title": "Cybage: Digital Product Engineering and Outsourced IT ...",
+              "link": "https://www.cybage.com/",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESUgHrOzAV8ILv75snwC8WfSFPHRxYVdW_vSeI6kNet0OqElfdL8TEVewVNty_6UXet3_ApgeOTevalDTahKYj97FrS7GLpgn_CXF8uYYLRWypdG0&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECB4QAQ&uoh=1",
+              "displayed_link": "https://www.cybage.com",
+              "favicon": "https://serpapi.com/images/i/UklGRpoAAABXRUJQVlA4II4AAACwAgCdASoQAA8AAsBMJbACdA7EDZCQ612xabw2OAAA_vqrMpoGzbdSM2GESpBx5P5FnvRZa1859lhj8QPC55lqQ_q4pNtrxGZ1_zXcJn7_L0g3AOWHa0LLDo-6ppj4EJ84QlCHWp37zM0ee2jYc-7WmAzqhn3I4SBYBWtdV3sMxLZ8r-v-LiS__P9Qe8AA.webp",
+              "snippet": "Cybage Software Pvt. Ltd. ... 6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014. Ph: +91-20-66041700.",
+              "snippet_highlighted_words": [
+                "Pune"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "Cybage Software Pvt. Ltd. ... 6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014. Ph: +91-20-66041700.",
+                  "source_info_link": "https://www.cybage.com/",
+                  "icon": "https://serpapi.com/images/i/UklGRpoAAABXRUJQVlA4II4AAACwAgCdASoQAA8AAsBMJbACdA7EDZCQ612xabw2OAAA_vqrMpoGzbdSM2GESpBx5P5FnvRZa1859lhj8QPC55lqQ_q4pNtrxGZ1_zXcJn7_L0g3AOWHa0LLDo-6ppj4EJ84QlCHWp37zM0ee2jYc-7WmAzqhn3I4SBYBWtdV3sMxLZ8r-v-LiS__P9Qe8AA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=Cn0vZ290bz91cmw9Q0FFU1VnSHJPekFWOEQ4VlhTang0RWtSRS1uSjhkZTdWa1Z6RmlqZVZ1UHhvTjdKUmJDT3Z2QVJQYThrOTBDekdnWVp4eEtZRFNDRy1FTEI1ZnlKTjhnNzdhTzlRSzRVYkVpc1V6YXBLMFlNeVhDT3BKaxIEGgIIABrOAxICCAAaACIAKgAyBggDEgJpbjoAQgQIARAASgBaAHIAegCCQKgDCAAQABgAIAAqCQoCaXQVvughQCoPCghzZXJ2aWNlcxWuz2NAKgkKAml0FZmZ5T8qDwoIc2VydmljZXMVgM-nPjJ9L2dvdG8_dXJsPUNBRVNVZ0hyT3pBVjhEOFZYU2p4NEVrUkUtbko4ZGU3VmtWekZpamVWdVB4b043SlJiQ092dkFSUGE4azkwQ3pHZ1laeHhLWURTQ0ctRUxCNWZ5Sk44Zzc3YU85UUs0VWJFaXNVemFwSzBZTXlYQ09wSms6QEN5YmFnZTogRGlnaXRhbCBQcm9kdWN0IEVuZ2luZWVyaW5nIGFuZCBPdXRzb3VyY2VkIDxiPklUPC9iPiAuLi5CpAFDeWJhZ2UgU29mdHdhcmUgUHZ0LiBMdGQuIC4uLiA2dGggRmxvb3IsIENlcmVicnVtIEIyLCBUaGUgQ2VyZWJydW0gSVQgUGFyaywgTmVhciBHb2xkIEFkbGFicywgS2FseWFuaSBOYWdhciwgPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhIC0gNDExMDE0LiBQaDogKzkxLTIwLTY2MDQxNzAwLiICEAFIAFgAaAA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=Cn0vZ290bz91cmw9Q0FFU1VnSHJPekFWOEQ4VlhTang0RWtSRS1uSjhkZTdWa1Z6RmlqZVZ1UHhvTjdKUmJDT3Z2QVJQYThrOTBDekdnWVp4eEtZRFNDRy1FTEI1ZnlKTjhnNzdhTzlRSzRVYkVpc1V6YXBLMFlNeVhDT3BKaxIEGgIIABrOAxICCAAaACIAKgAyBggDEgJpbjoAQgQIARAASgBaAHIAegCCQKgDCAAQABgAIAAqCQoCaXQVvughQCoPCghzZXJ2aWNlcxWuz2NAKgkKAml0FZmZ5T8qDwoIc2VydmljZXMVgM-nPjJ9L2dvdG8_dXJsPUNBRVNVZ0hyT3pBVjhEOFZYU2p4NEVrUkUtbko4ZGU3VmtWekZpamVWdVB4b043SlJiQ092dkFSUGE4azkwQ3pHZ1laeHhLWURTQ0ctRUxCNWZ5Sk44Zzc3YU85UUs0VWJFaXNVemFwSzBZTXlYQ09wSms6QEN5YmFnZTogRGlnaXRhbCBQcm9kdWN0IEVuZ2luZWVyaW5nIGFuZCBPdXRzb3VyY2VkIDxiPklUPC9iPiAuLi5CpAFDeWJhZ2UgU29mdHdhcmUgUHZ0LiBMdGQuIC4uLiA2dGggRmxvb3IsIENlcmVicnVtIEIyLCBUaGUgQ2VyZWJydW0gSVQgUGFyaywgTmVhciBHb2xkIEFkbGFicywgS2FseWFuaSBOYWdhciwgPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhIC0gNDExMDE0LiBQaDogKzkxLTIwLTY2MDQxNzAwLiICEAFIAFgAaAA",
+              "source": "Cybage",
+              "read_more_link": "https://www.cybage.com/#:~:text=Cybage%20Software%20Pvt.%20Ltd.&text=6th%20Floor%2C%20Cerebrum%20B2%2C%20The,Ph%3A%20%2B91%2D20%2D66041700"
+            },
+            {
+              "position": 4,
+              "title": "IT Services pune",
+              "link": "https://in.linkedin.com/company/it-services-pune",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESawHrOzAVKuHARRfVVTxVOaQnVChO_8kEZX3dETLXWg6tGAJS-bNBRPdpblTlRZNqoK4pRZO8w_Br-rhiAkCxEXGlGxRvieu7a8O4XKVq9UwcnVL-k3jb53-45NrCIcLTztrXeH9FMb1A56PA&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECBkQAQ&uoh=1",
+              "displayed_link": "40+ followers",
+              "favicon": "https://serpapi.com/images/i/UklGRsAAAABXRUJQVlA4ILQAAABQAwCdASoQABAAAsBMJbACdLoBLf4oANRJj6d2SZLhF7_ohAD-4n1FofdRna1o8FCt-OiJvVc8lzO8Rt17R6yr0CRJL0FBwsd8OIDxQ356R55Xei0KcLjbfh5C05X1nTKIh8X8ekP3RBUogy_jZ3kCUPbBWjzINpJUmDhbtDZS1e3a8_aUBwnkYz0mnTj4n4__aq6btWmAus7Zjw7JLZ_kNfUgtaLPXB6k1U8MVzX5_C1AAAA.webp",
+              "snippet": "IT Services pune | 43 followers on LinkedIn. IT services span the areas of computer software, hardware, programming, information and data management in any ...",
+              "snippet_highlighted_words": [
+                "IT Services pune",
+                "IT services"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "IT Services pune | 43 followers on LinkedIn. IT services span the areas of computer software, hardware, programming, information and data management in any ...",
+                  "source_info_link": "https://in.linkedin.com/company/it-services-pune",
+                  "icon": "https://serpapi.com/images/i/UklGRsAAAABXRUJQVlA4ILQAAABQAwCdASoQABAAAsBMJbACdLoBLf4oANRJj6d2SZLhF7_ohAD-4n1FofdRna1o8FCt-OiJvVc8lzO8Rt17R6yr0CRJL0FBwsd8OIDxQ356R55Xei0KcLjbfh5C05X1nTKIh8X8ekP3RBUogy_jZ3kCUPbBWjzINpJUmDhbtDZS1e3a8_aUBwnkYz0mnTj4n4__aq6btWmAus7Zjw7JLZ_kNfUgtaLPXB6k1U8MVzX5_C1AAAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=Cp4BL2dvdG8_dXJsPUNBRVNhd0hyT3pBVjZRSWNtRFJ3WnVrVVphcjFfMFRFR1NUcENwTHVQcHRkMl9YRC14dGZKVUJBcnpremxEdkQ5M2pWd3ZaRV8xZXFQWGo0TTJXRjRhVEY1Q21WTTBudXlmUGpGUkFDWF9OOTZlZFd2UFdQa0RYM0FVSjh1WDdwUGR5aHY2OHh2QmR1RnE2UFh6d08SBBoCCAAa4AMSAggAGgAiACoAMgYIAxICaW46AEIECAEQAEoAWgByAHoAgkC6AwgAEAAYACAAKgkKAml0Fd6qCEEqDwoIc2VydmljZXMVVlgDQSoJCgJpdBUujAJBKg8KCHNlcnZpY2VzFeTJ80AyngEvZ290bz91cmw9Q0FFU2F3SHJPekFWNlFJY21EUndadWtVWmFyMV8wVEVHU1RwQ3BMdVBwdGQyX1hELXh0ZkpVQkFyemt6bER2RDkzalZ3dlpFXzFlcVBYajRNMldGNGFURjVDbVZNMG51eWZQakZSQUNYX045NmVkV3ZQV1BrRFgzQVVKOHVYN3BQZHlodjY4eHZCZHVGcTZQWHp3TzoiPGI-SVQgU2VydmljZXMgcHVuZTwvYj4gLSBMaW5rZWRJbkKyATxiPklUIFNlcnZpY2VzIHB1bmU8L2I-IHwgNDMgZm9sbG93ZXJzIG9uIExpbmtlZEluLiA8Yj5JVCBzZXJ2aWNlczwvYj4gc3BhbiB0aGUgYXJlYXMgb2YgY29tcHV0ZXIgc29mdHdhcmUsIGhhcmR3YXJlLCBwcm9ncmFtbWluZywgaW5mb3JtYXRpb24gYW5kIGRhdGEgbWFuYWdlbWVudCBpbiBhbnkmbmJzcDsuLi4iAhABSABYAGgA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=Cp4BL2dvdG8_dXJsPUNBRVNhd0hyT3pBVjZRSWNtRFJ3WnVrVVphcjFfMFRFR1NUcENwTHVQcHRkMl9YRC14dGZKVUJBcnpremxEdkQ5M2pWd3ZaRV8xZXFQWGo0TTJXRjRhVEY1Q21WTTBudXlmUGpGUkFDWF9OOTZlZFd2UFdQa0RYM0FVSjh1WDdwUGR5aHY2OHh2QmR1RnE2UFh6d08SBBoCCAAa4AMSAggAGgAiACoAMgYIAxICaW46AEIECAEQAEoAWgByAHoAgkC6AwgAEAAYACAAKgkKAml0Fd6qCEEqDwoIc2VydmljZXMVVlgDQSoJCgJpdBUujAJBKg8KCHNlcnZpY2VzFeTJ80AyngEvZ290bz91cmw9Q0FFU2F3SHJPekFWNlFJY21EUndadWtVWmFyMV8wVEVHU1RwQ3BMdVBwdGQyX1hELXh0ZkpVQkFyemt6bER2RDkzalZ3dlpFXzFlcVBYajRNMldGNGFURjVDbVZNMG51eWZQakZSQUNYX045NmVkV3ZQV1BrRFgzQVVKOHVYN3BQZHlodjY4eHZCZHVGcTZQWHp3TzoiPGI-SVQgU2VydmljZXMgcHVuZTwvYj4gLSBMaW5rZWRJbkKyATxiPklUIFNlcnZpY2VzIHB1bmU8L2I-IHwgNDMgZm9sbG93ZXJzIG9uIExpbmtlZEluLiA8Yj5JVCBzZXJ2aWNlczwvYj4gc3BhbiB0aGUgYXJlYXMgb2YgY29tcHV0ZXIgc29mdHdhcmUsIGhhcmR3YXJlLCBwcm9ncmFtbWluZywgaW5mb3JtYXRpb24gYW5kIGRhdGEgbWFuYWdlbWVudCBpbiBhbnkmbmJzcDsuLi4iAhABSABYAGgA",
+              "source": "LinkedIn · IT Services pune"
+            },
+            {
+              "position": 5,
+              "title": "IT Companies List in Pune | PDF",
+              "link": "https://www.scribd.com/doc/78298354/List-of-Pune-IT-Companies",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESeAHrOzAV4fD5VBK1LmH4QBp43cO9aEOiONxKlRpt5hPjTqw5IXmd8Kzk0qgKrNlAzunaXWtJWwPq6CHI-0bhcy2OIiYxaHmCWrywNaBxVjoKQ4RmjQnR-BKLaHS1_kX5C1TC7QoZhXT1iuzngDragC3hSgR4ZG1JHQ&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECCsQAQ&uoh=1",
+              "displayed_link": "https://www.scribd.com › doc › List-of-Pune-IT-Compa...",
+              "favicon": "https://serpapi.com/images/i/UklGRigBAABXRUJQVlA4IBwBAAAwBgCdASocABwAPrUurVanIacnG_DgFolsALsNcA6TAiSRiU0ciNsNw4-ckvZckbI8Q0Lri0nWvPTAAP6fWoc5hI1waVpH4HPI-z3W07wkXNBNlhQO9hAKmOv8njeniRb9FCg1c1JmF3efXUUmw2bU_zMmv4y8p_nL016PcG2_Kkra3QUXk6GbHsoOEa89zFXoAnXirQsiNRzPXeKrniAu0unVpGtsEeMjevYRjJ48Bp-DMJ4D_R_y1f316ypJ0S_9mXgcgm8VoTywUh86jiUV9Al4I6yaumsUkda-7a6L12tg8hgBlh0gWv0-rnf3aeCVRG6cfsuzLtT0ruwHdbHm1C0wW2RxRakx4lXvH-JOfzi7UEbqOQ5wVHgAAA.webp",
+              "snippet": "... Pune with information like office numbers, addresses and phone numbers ... IT Services Pvt. Ltd. 925 / A ,Trikaya House,Deendayal Hospital Lane, [Link] ...",
+              "snippet_highlighted_words": [
+                "Pune",
+                "IT Services"
+              ],
+              "rich_snippet": {
+                "top": {
+                  "detected_extensions": {
+                    "rating": 4.2,
+                    "reviews": 33
+                  },
+                  "extensions": [
+                    "4.2(33)"
+                  ]
+                }
+              },
+              "about_this_result": {
+                "source": {
+                  "description": "... Pune with information like office numbers, addresses and phone numbers ... IT Services Pvt. Ltd. 925 / A ,Trikaya House,Deendayal Hospital Lane, [Link] ...",
+                  "source_info_link": "https://www.scribd.com/doc/78298354/List-of-Pune-IT-Companies",
+                  "icon": "https://serpapi.com/images/i/UklGRigBAABXRUJQVlA4IBwBAAAwBgCdASocABwAPrUurVanIacnG_DgFolsALsNcA6TAiSRiU0ciNsNw4-ckvZckbI8Q0Lri0nWvPTAAP6fWoc5hI1waVpH4HPI-z3W07wkXNBNlhQO9hAKmOv8njeniRb9FCg1c1JmF3efXUUmw2bU_zMmv4y8p_nL016PcG2_Kkra3QUXk6GbHsoOEa89zFXoAnXirQsiNRzPXeKrniAu0unVpGtsEeMjevYRjJ48Bp-DMJ4D_R_y1f316ypJ0S_9mXgcgm8VoTywUh86jiUV9Al4I6yaumsUkda-7a6L12tg8hgBlh0gWv0-rnf3aeCVRG6cfsuzLtT0ruwHdbHm1C0wW2RxRakx4lXvH-JOfzi7UEbqOQ5wVHgAAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CrABL2dvdG8_dXJsPUNBRVNlQUhyT3pBVmlNeEhZYlh1SFVrMHpNR3JSSnM4eHhlcTFRYnhuY0xUYzIxTlFMTUxrNlRwbjJjVGVBdFFqVEx3VVFYRDFmci1jdG5NVms3blFYZ3MtcVl3bkRBQWNHUnpLUkQyeF81czVfaTRuS21CWnFrX210VTE5bEtwa0Q5TUdOaTZzaC1Vdnh5bmZUYlNkX3NWNFhtV3JUdlpqaTJWR1ESBBoCCAAaigQSAggAGgAiACoAMgYIARICaW46AEIECAEQAEoAWgByAHoAgkDkAwgAEAAYACAAKgkKAml0FbJZiEAqDwoIc2VydmljZXMVkh5LPyoJCgJpdBVORhQ9Kg8KCHNlcnZpY2VzFc8vjkAysAEvZ290bz91cmw9Q0FFU2VBSHJPekFWaU14SFliWHVIVWswek1HclJKczh4eGVxMVFieG5jTFRjMjFOUUxNTGs2VHBuMmNUZUF0UWpUTHdVUVhEMWZyLWN0bk1WazduUVhncy1xWXduREFBY0dSektSRDJ4XzVzNV9pNG5LbUJacWtfbXRVMTlsS3BrRDlNR05pNnNoLVV2eHluZlRiU2Rfc1Y0WG1XclR2WmppMlZHUTo6SVQgQ29tcGFuaWVzIExpc3QgaW4gPGI-UHVuZTwvYj4gfCBQREYgfCBCdXNpbmVzcyAtIFNjcmliZEKyAS4uLiA8Yj5QdW5lPC9iPiB3aXRoIGluZm9ybWF0aW9uIGxpa2Ugb2ZmaWNlIG51bWJlcnMsIGFkZHJlc3NlcyBhbmQgcGhvbmUgbnVtYmVycyAuLi4gPGI-SVQgU2VydmljZXM8L2I-IFB2dC4gTHRkLiA5MjUgLyBBICxUcmlrYXlhIEhvdXNlLERlZW5kYXlhbCBIb3NwaXRhbCBMYW5lLCBbTGlua10mbmJzcDsuLi4iAhABSABYAGgA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CrABL2dvdG8_dXJsPUNBRVNlQUhyT3pBVmlNeEhZYlh1SFVrMHpNR3JSSnM4eHhlcTFRYnhuY0xUYzIxTlFMTUxrNlRwbjJjVGVBdFFqVEx3VVFYRDFmci1jdG5NVms3blFYZ3MtcVl3bkRBQWNHUnpLUkQyeF81czVfaTRuS21CWnFrX210VTE5bEtwa0Q5TUdOaTZzaC1Vdnh5bmZUYlNkX3NWNFhtV3JUdlpqaTJWR1ESBBoCCAAaigQSAggAGgAiACoAMgYIARICaW46AEIECAEQAEoAWgByAHoAgkDkAwgAEAAYACAAKgkKAml0FbJZiEAqDwoIc2VydmljZXMVkh5LPyoJCgJpdBVORhQ9Kg8KCHNlcnZpY2VzFc8vjkAysAEvZ290bz91cmw9Q0FFU2VBSHJPekFWaU14SFliWHVIVWswek1HclJKczh4eGVxMVFieG5jTFRjMjFOUUxNTGs2VHBuMmNUZUF0UWpUTHdVUVhEMWZyLWN0bk1WazduUVhncy1xWXduREFBY0dSektSRDJ4XzVzNV9pNG5LbUJacWtfbXRVMTlsS3BrRDlNR05pNnNoLVV2eHluZlRiU2Rfc1Y0WG1XclR2WmppMlZHUTo6SVQgQ29tcGFuaWVzIExpc3QgaW4gPGI-UHVuZTwvYj4gfCBQREYgfCBCdXNpbmVzcyAtIFNjcmliZEKyAS4uLiA8Yj5QdW5lPC9iPiB3aXRoIGluZm9ybWF0aW9uIGxpa2Ugb2ZmaWNlIG51bWJlcnMsIGFkZHJlc3NlcyBhbmQgcGhvbmUgbnVtYmVycyAuLi4gPGI-SVQgU2VydmljZXM8L2I-IFB2dC4gTHRkLiA5MjUgLyBBICxUcmlrYXlhIEhvdXNlLERlZW5kYXlhbCBIb3NwaXRhbCBMYW5lLCBbTGlua10mbmJzcDsuLi4iAhABSABYAGgA",
+              "source": "Scribd",
+              "read_more_link": "https://www.scribd.com/doc/78298354/List-of-Pune-IT-Companies#:~:text=IT%20Services%20Pvt.%20Ltd.%20925,%2CTrikaya%20House%2CDeendayal%20Hospital%20Lane%2C%20%5BLink"
+            },
+            {
+              "position": 6,
+              "title": "IT Company in Pune, Maharashtra",
+              "link": "https://www.progressive.in/locations/it-company-pune",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESbwHrOzAVJGkGKdGVU4-wykZquT_5ADe9bvEASqaz1Z9LukUS-SYOwCi4fnqRyH6FmtoOZQuirbfSZAJ5u3RlqVsGPoRNCHO8qA9_WAtPufemXBkC0p6ATPKcP9vaYzHoLg9KKz2kfYR-KNF1vT1_hw&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECDAQAQ&uoh=1",
+              "displayed_link": "https://www.progressive.in › locations › it-company-pune",
+              "favicon": "https://serpapi.com/images/i/UklGRmwBAABXRUJQVlA4IGABAABwBwCdASogACAAPtE-tFooIigoFAEAGglsAEuBVq_UB9wGNgaYBvIVcAbA2pp5xo2PtO8j_orS-RVgUqkngyd0LQPpYAD-_SpkOYg6oym3PFJM2xY3jYwv5akFI1G2lO44A5JHz-h5Q8ipZfy85v5i9N9L_-_HOOFOtO0yJ3A-LkZ5_-qxiwh7vdg_-ah3ryulespXTFHIB7OKb8nLCQPokwY75u5ykeYAVD4qdCuosfO_4vJbpmm2tXptT6sje4CQq-fPd-82dMfC7_hvPzHrzcWo_iEHm7JHYc35u_qQ39MpE-jtrA-YFiTI0nxXuf3Imm5pnJ0YE_SZ5qW-X2jn9Ae_pnZZJFey5WP1j8NHnyj1la9PPf4daCcQumAfRBn1E_aSahhPXGBpvegbUD-1SqAmwPqnCpV76e3p1H2VD3v8RJJNbCAoISUR-05hUtOy-7T_-nD9oBv2vyYk0AAA.webp",
+              "snippet": "Partner with a Trusted IT Service Provider in Pune, Maharashtra. With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...",
+              "snippet_highlighted_words": [
+                "Pune",
+                "IT services"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "Partner with a Trusted IT Service Provider in Pune, Maharashtra. With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...",
+                  "source_info_link": "https://www.progressive.in/locations/it-company-pune",
+                  "icon": "https://serpapi.com/images/i/UklGRmwBAABXRUJQVlA4IGABAABwBwCdASogACAAPtE-tFooIigoFAEAGglsAEuBVq_UB9wGNgaYBvIVcAbA2pp5xo2PtO8j_orS-RVgUqkngyd0LQPpYAD-_SpkOYg6oym3PFJM2xY3jYwv5akFI1G2lO44A5JHz-h5Q8ipZfy85v5i9N9L_-_HOOFOtO0yJ3A-LkZ5_-qxiwh7vdg_-ah3ryulespXTFHIB7OKb8nLCQPokwY75u5ykeYAVD4qdCuosfO_4vJbpmm2tXptT6sje4CQq-fPd-82dMfC7_hvPzHrzcWo_iEHm7JHYc35u_qQ39MpE-jtrA-YFiTI0nxXuf3Imm5pnJ0YE_SZ5qW-X2jn9Ae_pnZZJFey5WP1j8NHnyj1la9PPf4daCcQumAfRBn1E_aSahhPXGBpvegbUD-1SqAmwPqnCpV76e3p1H2VD3v8RJJNbCAoISUR-05hUtOy-7T_-nD9oBv2vyYk0AAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CqQBL2dvdG8_dXJsPUNBRVNid0hyT3pBVlJLRWdUZjh5UjVQMmx4Q1BxV1VLZjN5VnM3czY2V3J2ckpSZGxiV2dqRk9ZUS11aXFvMHFFSVoySDFyVFg0UUhTLVZ3LWR5ZUhTVzhsX29tQ3VSQ0JDWktGWUE2dkxCcEpwZVE0WkFvZ2VaaTI0UkJUZEZvbV9MVnFkY0p5cUEtSFl4QTZ6RGV5ekV3V0ESBBoCCAAagwQSABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJA3wMIABAAGAAgACoJCgJpdBVYF7VAKg8KCHNlcnZpY2VzFUmMUkAqCQoCaXQVEtCxPyoPCghzZXJ2aWNlcxXIlYtAMqQBL2dvdG8_dXJsPUNBRVNid0hyT3pBVlJLRWdUZjh5UjVQMmx4Q1BxV1VLZjN5VnM3czY2V3J2ckpSZGxiV2dqRk9ZUS11aXFvMHFFSVoySDFyVFg0UUhTLVZ3LWR5ZUhTVzhsX29tQ3VSQ0JDWktGWUE2dkxCcEpwZVE0WkFvZ2VaaTI0UkJUZEZvbV9MVnFkY0p5cUEtSFl4QTZ6RGV5ekV3V0E6PklUIENvbXBhbnkgaW4gPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhIC0gUHJvZ3Jlc3NpdmUgVGVjaHNlcnZlQrUBUGFydG5lciB3aXRoIGEgVHJ1c3RlZCBJVCBTZXJ2aWNlIFByb3ZpZGVyIGluIDxiPlB1bmU8L2I-LCBNYWhhcmFzaHRyYS4gV2l0aCBvdmVyIDI2IHllYXJzIG9mIGV4cGVyaWVuY2UgaW4gdGhlIGluZHVzdHJ5LCB3ZSBkZWxpdmVyIHRvcC1yYXRlZCBhbmQgc2VjdXJlIDxiPklUIHNlcnZpY2VzPC9iPiZuYnNwOy4uLiICEAFIAFgAaAA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CqQBL2dvdG8_dXJsPUNBRVNid0hyT3pBVlJLRWdUZjh5UjVQMmx4Q1BxV1VLZjN5VnM3czY2V3J2ckpSZGxiV2dqRk9ZUS11aXFvMHFFSVoySDFyVFg0UUhTLVZ3LWR5ZUhTVzhsX29tQ3VSQ0JDWktGWUE2dkxCcEpwZVE0WkFvZ2VaaTI0UkJUZEZvbV9MVnFkY0p5cUEtSFl4QTZ6RGV5ekV3V0ESBBoCCAAagwQSABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJA3wMIABAAGAAgACoJCgJpdBVYF7VAKg8KCHNlcnZpY2VzFUmMUkAqCQoCaXQVEtCxPyoPCghzZXJ2aWNlcxXIlYtAMqQBL2dvdG8_dXJsPUNBRVNid0hyT3pBVlJLRWdUZjh5UjVQMmx4Q1BxV1VLZjN5VnM3czY2V3J2ckpSZGxiV2dqRk9ZUS11aXFvMHFFSVoySDFyVFg0UUhTLVZ3LWR5ZUhTVzhsX29tQ3VSQ0JDWktGWUE2dkxCcEpwZVE0WkFvZ2VaaTI0UkJUZEZvbV9MVnFkY0p5cUEtSFl4QTZ6RGV5ekV3V0E6PklUIENvbXBhbnkgaW4gPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhIC0gUHJvZ3Jlc3NpdmUgVGVjaHNlcnZlQrUBUGFydG5lciB3aXRoIGEgVHJ1c3RlZCBJVCBTZXJ2aWNlIFByb3ZpZGVyIGluIDxiPlB1bmU8L2I-LCBNYWhhcmFzaHRyYS4gV2l0aCBvdmVyIDI2IHllYXJzIG9mIGV4cGVyaWVuY2UgaW4gdGhlIGluZHVzdHJ5LCB3ZSBkZWxpdmVyIHRvcC1yYXRlZCBhbmQgc2VjdXJlIDxiPklUIHNlcnZpY2VzPC9iPiZuYnNwOy4uLiICEAFIAFgAaAA",
+              "source": "Progressive Techserve",
+              "read_more_link": "https://www.progressive.in/locations/it-company-pune#:~:text=Partner%20with%20a%20Trusted%20IT,across%20various%20verticals%20and%20sectors."
+            },
+            {
+              "position": 7,
+              "title": "Top IT Services Companies in Pune - 2026 Reviews",
+              "link": "https://www.goodfirms.co/it-services/pune",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESZAHrOzAVbvJ-BdOimTs4jyS748whrEgwANwA7s5GPNedjE7tTAVSPULv0QA-LPv9JBgfUojK5ndMa7sdcbtveaF_BWmZohSfy9QUW9xlWcqRJVDJRrOoqu0JHYv1dTkc1lR5xSg&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECCwQAQ&uoh=1",
+              "displayed_link": "https://www.goodfirms.co › IT Services",
+              "favicon": "https://serpapi.com/images/i/UklGRg4BAABXRUJQVlA4IAIBAABwBgCdASocABwAPtEutFooIagoGAEAGglsAJ0yhHVe4CLchyjcs_1Na1Z4fuwUkkcqc_5ity1yowvGEAAA_v6GC7E65OdTXughKUwyB6pMlPn8Cd7oI38wIkY0YXd7ECH8ycRttLfaNZYTbx2iSmn_z6c1YO0uvKPt_Bxuud69dilWl_qGJL4jByeZc8F7m2utYArmw1la_7MFMrq-xctHdPWCtFDTylrGsved-GflKX7fwcmKiSsERWeaVIJCtQB1REvoKQhGK2INmSfUXFexbOCZKLsVEEwE7VeKO52Uu2spRoGim3OZsoB9E98rof-6Gyfob36dJVIzhJBixYyZ4AA.webp",
+              "snippet": "Goodfirms has reviewed 267 IT Services Companies in Pune as of October 2026. The top-ranked firm is KodXL Technologies (0.0 stars, 0 verified reviews, $25 - $49 ...",
+              "snippet_highlighted_words": [
+                "IT Services",
+                "Pune"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "Goodfirms has reviewed 267 IT Services Companies in Pune as of October 2026. The top-ranked firm is KodXL Technologies (0.0 stars, 0 verified reviews, $25 - $49 ...",
+                  "source_info_link": "https://www.goodfirms.co/it-services/pune",
+                  "icon": "https://serpapi.com/images/i/UklGRg4BAABXRUJQVlA4IAIBAABwBgCdASocABwAPtEutFooIagoGAEAGglsAJ0yhHVe4CLchyjcs_1Na1Z4fuwUkkcqc_5ity1yowvGEAAA_v6GC7E65OdTXughKUwyB6pMlPn8Cd7oI38wIkY0YXd7ECH8ycRttLfaNZYTbx2iSmn_z6c1YO0uvKPt_Bxuud69dilWl_qGJL4jByeZc8F7m2utYArmw1la_7MFMrq-xctHdPWCtFDTylrGsved-GflKX7fwcmKiSsERWeaVIJCtQB1REvoKQhGK2INmSfUXFexbOCZKLsVEEwE7VeKO52Uu2spRoGim3OZsoB9E98rof-6Gyfob36dJVIzhJBixYyZ4AA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CpUBL2dvdG8_dXJsPUNBRVNaQUhyT3pBVlB6MTNEbEoxaHRvVEU0MEJxejhjaWRGemxFTWpPU2pBQWQ5R2NxVDVXWFgwdGxLdEdTOEM3N1VXbHdYYVliQm1hTHcwZGJNTnY4RjNsMWFZMkIzRHlqeE9POE5LclVIWDRISDRINDdMWktRa2UyalR3SHQ1aVQwYUlTWWR0RjgSBBoCCAAaggQSABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJA3gMIABAAGAAgACoJCgJpdBWOOodAKg8KCHNlcnZpY2VzFVjkrUAqCQoCaXQVxqtwQCoPCghzZXJ2aWNlcxVUqoRAMpUBL2dvdG8_dXJsPUNBRVNaQUhyT3pBVlB6MTNEbEoxaHRvVEU0MEJxejhjaWRGemxFTWpPU2pBQWQ5R2NxVDVXWFgwdGxLdEdTOEM3N1VXbHdYYVliQm1hTHcwZGJNTnY4RjNsMWFZMkIzRHlqeE9POE5LclVIWDRISDRINDdMWktRa2UyalR3SHQ1aVQwYUlTWWR0Rjg6SlRvcCA8Yj5JVCBTZXJ2aWNlczwvYj4gQ29tcGFuaWVzIGluIDxiPlB1bmU8L2I-IC0gMjAyNiBSZXZpZXdzIHwgR29vZGZpcm1zQrcBR29vZGZpcm1zIGhhcyByZXZpZXdlZCAyNjcgPGI-SVQgU2VydmljZXM8L2I-IENvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPiBhcyBvZiBPY3RvYmVyIDIwMjYuIFRoZSB0b3AtcmFua2VkIGZpcm0gaXMgS29kWEwgVGVjaG5vbG9naWVzICgwLjAgc3RhcnMsIDAgdmVyaWZpZWQgcmV2aWV3cywgJDI1IC0gJDQ5Jm5ic3A7Li4uIgIQAUgAWABoAA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CpUBL2dvdG8_dXJsPUNBRVNaQUhyT3pBVlB6MTNEbEoxaHRvVEU0MEJxejhjaWRGemxFTWpPU2pBQWQ5R2NxVDVXWFgwdGxLdEdTOEM3N1VXbHdYYVliQm1hTHcwZGJNTnY4RjNsMWFZMkIzRHlqeE9POE5LclVIWDRISDRINDdMWktRa2UyalR3SHQ1aVQwYUlTWWR0RjgSBBoCCAAaggQSABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJA3gMIABAAGAAgACoJCgJpdBWOOodAKg8KCHNlcnZpY2VzFVjkrUAqCQoCaXQVxqtwQCoPCghzZXJ2aWNlcxVUqoRAMpUBL2dvdG8_dXJsPUNBRVNaQUhyT3pBVlB6MTNEbEoxaHRvVEU0MEJxejhjaWRGemxFTWpPU2pBQWQ5R2NxVDVXWFgwdGxLdEdTOEM3N1VXbHdYYVliQm1hTHcwZGJNTnY4RjNsMWFZMkIzRHlqeE9POE5LclVIWDRISDRINDdMWktRa2UyalR3SHQ1aVQwYUlTWWR0Rjg6SlRvcCA8Yj5JVCBTZXJ2aWNlczwvYj4gQ29tcGFuaWVzIGluIDxiPlB1bmU8L2I-IC0gMjAyNiBSZXZpZXdzIHwgR29vZGZpcm1zQrcBR29vZGZpcm1zIGhhcyByZXZpZXdlZCAyNjcgPGI-SVQgU2VydmljZXM8L2I-IENvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPiBhcyBvZiBPY3RvYmVyIDIwMjYuIFRoZSB0b3AtcmFua2VkIGZpcm0gaXMgS29kWEwgVGVjaG5vbG9naWVzICgwLjAgc3RhcnMsIDAgdmVyaWZpZWQgcmV2aWV3cywgJDI1IC0gJDQ5Jm5ic3A7Li4uIgIQAUgAWABoAA",
+              "source": "Goodfirms",
+              "read_more_link": "https://www.goodfirms.co/it-services/pune#:~:text=Goodfirms%20has%20reviewed%20267%20IT,%2D%20%2449%2Fhr%2C%20founded%202016%2C%20Pune)."
+            },
+            {
+              "position": 8,
+              "title": "Top IT Company in Pune | Best IT Services",
+              "link": "https://www.sapphiresolutions.net/top-it-company-in-pune",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAEScwHrOzAVsWe5Iu2JpTdxLdJFzWA3NEkJoJONH5TBnepC-JXIZC8gCQTvzmkH36QTQFBj0ABsVHaAPdDCMkgysvWBJBB2kHXSrHAsXbm5XjjfwDz77jzeCP5eAivKiI-F8myuscoJ5YGOMIgqujI7fL8GhPA&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECDcQAQ&uoh=1",
+              "displayed_link": "https://www.sapphiresolutions.net › top-it-company-in-p...",
+              "favicon": "https://serpapi.com/images/i/UklGRlgBAABXRUJQVlA4IEwBAACQBwCdASogACAAPtEutFooIagoGAEAGglsAJ0yhID_BD05bKGDAKMrOnoYcOH_tf49MgdFffiYmH9BRl_a1UirhRinngAA_u73cxzYXRldnqyQfN2_DVh5b70q7z5g3nMLBGR9YTgbxml-zo-sF1wIBnK83yD1pB54xtS_0JC9xLMswe8uIMQGfgP3Jlfr6x4PK84P_ZeiuLeXMYozWxqAQh1nGd8Jp1-E3bsivTrfxMHVs3aCy281k3No5MCfFD0bMzK8ouG-jug9f4yzYpMImFZV4tKo3Is56yn-P4NwGWY0yoqiPI_xwV4pjKjyPO6yQhji_ZrzluIDk0LwK9aOaSavHHbbXMS3C6nK4GCxueeinfDf-xmT4ug2CJKGQ0HbhtVH5zAHOkZAoAMtfVihEZbO3MjEA0lf8R0MVdCBAo4Br3bwY0MZBEYAAA.webp",
+              "snippet": "Boost your business with modern technology and a Top IT Company in Pune. Get expert tech IT services tailored to your needs. Contact us today for innovative ...",
+              "snippet_highlighted_words": [
+                "Pune",
+                "IT services"
+              ],
+              "rich_snippet": {
+                "top": {
+                  "detected_extensions": {
+                    "rating": 4.9,
+                    "reviews": 1949
+                  },
+                  "extensions": [
+                    "4.9(1,949)"
+                  ]
+                }
+              },
+              "about_this_result": {
+                "source": {
+                  "description": "Boost your business with modern technology and a Top IT Company in Pune. Get expert tech IT services tailored to your needs. Contact us today for innovative ...",
+                  "source_info_link": "https://www.sapphiresolutions.net/top-it-company-in-pune",
+                  "icon": "https://serpapi.com/images/i/UklGRlgBAABXRUJQVlA4IEwBAACQBwCdASogACAAPtEutFooIagoGAEAGglsAJ0yhID_BD05bKGDAKMrOnoYcOH_tf49MgdFffiYmH9BRl_a1UirhRinngAA_u73cxzYXRldnqyQfN2_DVh5b70q7z5g3nMLBGR9YTgbxml-zo-sF1wIBnK83yD1pB54xtS_0JC9xLMswe8uIMQGfgP3Jlfr6x4PK84P_ZeiuLeXMYozWxqAQh1nGd8Jp1-E3bsivTrfxMHVs3aCy281k3No5MCfFD0bMzK8ouG-jug9f4yzYpMImFZV4tKo3Is56yn-P4NwGWY0yoqiPI_xwV4pjKjyPO6yQhji_ZrzluIDk0LwK9aOaSavHHbbXMS3C6nK4GCxueeinfDf-xmT4ug2CJKGQ0HbhtVH5zAHOkZAoAMtfVihEZbO3MjEA0lf8R0MVdCBAo4Br3bwY0MZBEYAAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CqkBL2dvdG8_dXJsPUNBRVNjd0hyT3pBVlpISnlJdWQzVng5R3FPbEJBa1lELXY4ejhYYV9QaXl5blIzX3RmQlVuT0NuVWx0cWNQMGdIR1dOSXVST3p0Skt3RHpEZ0VJbG5WOHoyRjdrSmE5czBFZVdBZnlUdjZ3QWlyRGMtOGxzNXo1VjZBTkptX2lveTlWc3o0OVhxbFlLWmg1S2xPMV9nRkx5SmQ0MXlnRRIEGgIIABr_AxIAGgAiACoAMgYIARICaW46AEIECAEQAEoAWgByAHoAgkDbAwgAEAAYACAAKgkKAml0FXT00UAqDwoIc2VydmljZXMVgHuYQCoJCgJpdBXLrX1AKg8KCHNlcnZpY2VzFYKvlkAyqQEvZ290bz91cmw9Q0FFU2N3SHJPekFWWkhKeUl1ZDNWeDlHcU9sQkFrWUQtdjh6OFhhX1BpeXluUjNfdGZCVW5PQ25VbHRxY1AwZ0hHV05JdVJPenRKS3dEekRnRUlsblY4ejJGN2tKYTlzMEVlV0FmeVR2NndBaXJEYy04bHM1ejVWNkFOSm1faW95OVZzejQ5WHFsWUtaaDVLbE8xX2dGTHlKZDQxeWdFOjdUb3AgSVQgQ29tcGFueSBpbiA8Yj5QdW5lPC9iPiB8IEJlc3QgPGI-SVQgU2VydmljZXM8L2I-QrMBQm9vc3QgeW91ciBidXNpbmVzcyB3aXRoIG1vZGVybiB0ZWNobm9sb2d5IGFuZCBhIFRvcCBJVCBDb21wYW55IGluIDxiPlB1bmU8L2I-LiBHZXQgZXhwZXJ0IHRlY2ggPGI-SVQgc2VydmljZXM8L2I-IHRhaWxvcmVkIHRvIHlvdXIgbmVlZHMuIENvbnRhY3QgdXMgdG9kYXkgZm9yIGlubm92YXRpdmUmbmJzcDsuLi4iAhABSABYAGgA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CqkBL2dvdG8_dXJsPUNBRVNjd0hyT3pBVlpISnlJdWQzVng5R3FPbEJBa1lELXY4ejhYYV9QaXl5blIzX3RmQlVuT0NuVWx0cWNQMGdIR1dOSXVST3p0Skt3RHpEZ0VJbG5WOHoyRjdrSmE5czBFZVdBZnlUdjZ3QWlyRGMtOGxzNXo1VjZBTkptX2lveTlWc3o0OVhxbFlLWmg1S2xPMV9nRkx5SmQ0MXlnRRIEGgIIABr_AxIAGgAiACoAMgYIARICaW46AEIECAEQAEoAWgByAHoAgkDbAwgAEAAYACAAKgkKAml0FXT00UAqDwoIc2VydmljZXMVgHuYQCoJCgJpdBXLrX1AKg8KCHNlcnZpY2VzFYKvlkAyqQEvZ290bz91cmw9Q0FFU2N3SHJPekFWWkhKeUl1ZDNWeDlHcU9sQkFrWUQtdjh6OFhhX1BpeXluUjNfdGZCVW5PQ25VbHRxY1AwZ0hHV05JdVJPenRKS3dEekRnRUlsblY4ejJGN2tKYTlzMEVlV0FmeVR2NndBaXJEYy04bHM1ejVWNkFOSm1faW95OVZzejQ5WHFsWUtaaDVLbE8xX2dGTHlKZDQxeWdFOjdUb3AgSVQgQ29tcGFueSBpbiA8Yj5QdW5lPC9iPiB8IEJlc3QgPGI-SVQgU2VydmljZXM8L2I-QrMBQm9vc3QgeW91ciBidXNpbmVzcyB3aXRoIG1vZGVybiB0ZWNobm9sb2d5IGFuZCBhIFRvcCBJVCBDb21wYW55IGluIDxiPlB1bmU8L2I-LiBHZXQgZXhwZXJ0IHRlY2ggPGI-SVQgc2VydmljZXM8L2I-IHRhaWxvcmVkIHRvIHlvdXIgbmVlZHMuIENvbnRhY3QgdXMgdG9kYXkgZm9yIGlubm92YXRpdmUmbmJzcDsuLi4iAhABSABYAGgA",
+              "source": "Sapphire Software Solutions"
+            },
+            {
+              "position": 9,
+              "title": "26 Software Companies in Pune to Know",
+              "link": "https://builtinpune.in/articles/software-companies-in-pune",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESdQHrOzAVdIzBARcSUmDYpm_GfP1NbAQx6cvES5HJ4CXxbsmXxfGgaCVoPScGihTWkS9qiM9KblxMQgPB0N5zvu0m696RLKbX6LXKK2CqwH9bU7-xB-HbXr43XT_vcpZYhpO0UgtwOocCZHp5JkavpKaMTvPUPA&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECDEQAQ&uoh=1",
+              "displayed_link": "https://builtinpune.in › articles › software-companies-in-...",
+              "favicon": "https://serpapi.com/images/i/UklGRnoBAABXRUJQVlA4IG4BAAAQBwCdASogACAAPtEytFooIigoGAEAGglsAKwvgNYCLAOk7NoDSfM2bsBVH-b4Hk57QafGecp7FXuMoFgYirrAAAD-_pVOmdt4NS_I_ycvSS_EhAm50XXwYXkul3UzsJB3Gz7JNkGoJbWxhpMvIYPqnu7fnPde__ka_fggP82u_7sknP1K9OvWTdGS2snxBxvM_Q4Xjp3Qp9Fkt984nZvzG-sr-DYczfItkd74nf4VUdZ4uPnnE9euyAvPXecLHZdmNbqLBrZq1LqN_JGmZPnA2bmxpa0_2ikwWLv-B1bfC10TyXiJ9mxculal7vQ8iA8Z1dVsVvEIlZFyP3NopvRIlF4eLKJVsYxFdbZExzqwFjoccIsxFZYwamwWypL2tb3VO7h2XPIsU32JKIqXzmtN_xy9yLf41hFAOJVkCGXa0V41alijhUmsze5MZeuQwNKBRbTSpv1WW2KoXEoOq79I66Yt_zMQZFS5O0KgAAA.webp",
+              "snippet": "An affiliate of the Mahindra Group, Tech Mahindra is an IT services and ... In Pune, the company unveiled its engineering hub, the Chamberlain Group Pune ...",
+              "snippet_highlighted_words": [
+                "IT services",
+                "Pune",
+                "Pune"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "An affiliate of the Mahindra Group, Tech Mahindra is an IT services and ... In Pune, the company unveiled its engineering hub, the Chamberlain Group Pune ...",
+                  "source_info_link": "https://builtinpune.in/articles/software-companies-in-pune",
+                  "icon": "https://serpapi.com/images/i/UklGRnoBAABXRUJQVlA4IG4BAAAQBwCdASogACAAPtEytFooIigoGAEAGglsAKwvgNYCLAOk7NoDSfM2bsBVH-b4Hk57QafGecp7FXuMoFgYirrAAAD-_pVOmdt4NS_I_ycvSS_EhAm50XXwYXkul3UzsJB3Gz7JNkGoJbWxhpMvIYPqnu7fnPde__ka_fggP82u_7sknP1K9OvWTdGS2snxBxvM_Q4Xjp3Qp9Fkt984nZvzG-sr-DYczfItkd74nf4VUdZ4uPnnE9euyAvPXecLHZdmNbqLBrZq1LqN_JGmZPnA2bmxpa0_2ikwWLv-B1bfC10TyXiJ9mxculal7vQ8iA8Z1dVsVvEIlZFyP3NopvRIlF4eLKJVsYxFdbZExzqwFjoccIsxFZYwamwWypL2tb3VO7h2XPIsU32JKIqXzmtN_xy9yLf41hFAOJVkCGXa0V41alijhUmsze5MZeuQwNKBRbTSpv1WW2KoXEoOq79I66Yt_zMQZFS5O0KgAAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CqwBL2dvdG8_dXJsPUNBRVNkUUhyT3pBVkU4YjQ4Q1Y4UV90M1lFYlpIX1ZzYlg0NWluUnVEUW9kbnBVVmgyZVpQNmwtaHlrb1d6MlVmTEg0Ym9mYVBtWkFwUGV5YXhpaG95QXlMdTlDVFBLUDRxVFFnbVpFWEdmb2JVOU1TMXlpZjM0Q0JSYXBObTZaTEJoVzI3RmtxV3pjaHNTRjk3b25DWlBTaGlwUkxScGZUdxIEGgIIABr9AxICCAAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQNcDCAAQABgAIAAqCQoCaXQVntWqPyoPCghzZXJ2aWNlcxUdOkQ_KgkKAml0FZaBiD0qDwoIc2VydmljZXMVsWebQDKsAS9nb3RvP3VybD1DQUVTZFFIck96QVZFOGI0OENWOFFfdDNZRWJaSF9Wc2JYNDVpblJ1RFFvZG5wVVZoMmVaUDZsLWh5a29XejJVZkxINGJvZmFQbVpBcFBleWF4aWhveUF5THU5Q1RQS1A0cVRRZ21aRVhHZm9iVTlNUzF5aWYzNENCUmFwTm02WkxCaFcyN0ZrcVd6Y2hzU0Y5N29uQ1pQU2hpcFJMUnBmVHc6LDI2IFNvZnR3YXJlIENvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPiB0byBLbm93QrcBQW4gYWZmaWxpYXRlIG9mIHRoZSBNYWhpbmRyYSBHcm91cCwgVGVjaCBNYWhpbmRyYSBpcyBhbiA8Yj5JVCBzZXJ2aWNlczwvYj4gYW5kIC4uLiBJbiA8Yj5QdW5lPC9iPiwgdGhlIGNvbXBhbnkgdW52ZWlsZWQgaXRzIGVuZ2luZWVyaW5nIGh1YiwgdGhlIENoYW1iZXJsYWluIEdyb3VwIDxiPlB1bmU8L2I-Jm5ic3A7Li4uIgIQAUgAWABoAA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CqwBL2dvdG8_dXJsPUNBRVNkUUhyT3pBVkU4YjQ4Q1Y4UV90M1lFYlpIX1ZzYlg0NWluUnVEUW9kbnBVVmgyZVpQNmwtaHlrb1d6MlVmTEg0Ym9mYVBtWkFwUGV5YXhpaG95QXlMdTlDVFBLUDRxVFFnbVpFWEdmb2JVOU1TMXlpZjM0Q0JSYXBObTZaTEJoVzI3RmtxV3pjaHNTRjk3b25DWlBTaGlwUkxScGZUdxIEGgIIABr9AxICCAAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQNcDCAAQABgAIAAqCQoCaXQVntWqPyoPCghzZXJ2aWNlcxUdOkQ_KgkKAml0FZaBiD0qDwoIc2VydmljZXMVsWebQDKsAS9nb3RvP3VybD1DQUVTZFFIck96QVZFOGI0OENWOFFfdDNZRWJaSF9Wc2JYNDVpblJ1RFFvZG5wVVZoMmVaUDZsLWh5a29XejJVZkxINGJvZmFQbVpBcFBleWF4aWhveUF5THU5Q1RQS1A0cVRRZ21aRVhHZm9iVTlNUzF5aWYzNENCUmFwTm02WkxCaFcyN0ZrcVd6Y2hzU0Y5N29uQ1pQU2hpcFJMUnBmVHc6LDI2IFNvZnR3YXJlIENvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPiB0byBLbm93QrcBQW4gYWZmaWxpYXRlIG9mIHRoZSBNYWhpbmRyYSBHcm91cCwgVGVjaCBNYWhpbmRyYSBpcyBhbiA8Yj5JVCBzZXJ2aWNlczwvYj4gYW5kIC4uLiBJbiA8Yj5QdW5lPC9iPiwgdGhlIGNvbXBhbnkgdW52ZWlsZWQgaXRzIGVuZ2luZWVyaW5nIGh1YiwgdGhlIENoYW1iZXJsYWluIEdyb3VwIDxiPlB1bmU8L2I-Jm5ic3A7Li4uIgIQAUgAWABoAA",
+              "source": "Built In Pune",
+              "read_more_link": "https://builtinpune.in/articles/software-companies-in-pune#:~:text=An%20affiliate%20of%20the%20Mahindra,AI%2C%20metaverse%20and%20quantum%20computing.&text=In%20Pune%2C%20the%20company%20unveiled,dock%2Dlevel%20openers%20and%20gate%20operators."
+            },
+            {
+              "position": 10,
+              "title": "Popular IT Solution Providers in Pune",
+              "link": "https://www.justdial.com/Pune/IT-Solution-Providers/nct-10278073",
+              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESewHrOzAVEBzOa9kyqmA2KHAeu3JYGYLSaNzNH-Xa826idUG5D84w3Yn73oG7bzGKoBCS3hKpKTjQF-7kjC-ZZoxaBc3LA3vvD5GM7kV3OvEIL7FvE_lVOKFAUz_aLqyR6BIpAKPDnSFRHfveig_tP568xZb4n9VEcj3n8A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQFnoECCoQAQ&uoh=1",
+              "displayed_link": "https://www.justdial.com › ... › 3387+ Listings",
+              "favicon": "https://serpapi.com/images/i/UklGRqgAAABXRUJQVlA4IJwAAADwAgCdASoQABAAAsBMJbACdDiAP0A4CkFq58psin0SkAD--q31jH7d5W1uxfXO5nb8LSdefKaagozfP45QnxuH4vNL1KtsnPCpMJUuGP_FrEFbNoaquFgwJzn34CIyxoWia3lxLLsb-8VB4cmZOAYN_1krQMDF0t8L_p2aqhj9f-w2zUnHUm8H7QdRLxoFBciseJRQuvI02frQAAA.webp",
+              "snippet": "Popular IT Solution Providers in Pune · Utm Infotech · Matrix Computer Solutions · Sanveer Infotech Pvt Ltd · Codered Softwares Pvt Ltd · Priyam It Services Pvt Ltd.",
+              "snippet_highlighted_words": [
+                "Pune",
+                "It Services"
+              ],
+              "about_this_result": {
+                "source": {
+                  "description": "Popular IT Solution Providers in Pune · Utm Infotech · Matrix Computer Solutions · Sanveer Infotech Pvt Ltd · Codered Softwares Pvt Ltd · Priyam It Services Pvt Ltd.",
+                  "source_info_link": "https://www.justdial.com/Pune/IT-Solution-Providers/nct-10278073",
+                  "icon": "https://serpapi.com/images/i/UklGRqgAAABXRUJQVlA4IJwAAADwAgCdASoQABAAAsBMJbACdDiAP0A4CkFq58psin0SkAD--q31jH7d5W1uxfXO5nb8LSdefKaagozfP45QnxuH4vNL1KtsnPCpMJUuGP_FrEFbNoaquFgwJzn34CIyxoWia3lxLLsb-8VB4cmZOAYN_1krQMDF0t8L_p2aqhj9f-w2zUnHUm8H7QdRLxoFBciseJRQuvI02frQAAA.webp"
+                },
+                "languages": [
+                  "en"
+                ],
+                "regions": [
+                  "IN"
+                ]
+              },
+              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CrQBL2dvdG8_dXJsPUNBRVNld0hyT3pBVlZLTHlRS3gxOVhJR2stalhHMVFqSmlBd0JlaWpJY1BsNTN3TlhIaGsxMzhUVWxBcXFDVEJWaE5BZlB0RGJyZS1LUzByZ3ZNVDhBb3dNSFhabW1pdGhMSDRYaEpJeXhIZk5HS0JSaFBrMU5wdS1pdUtUVDgzUERFSlVEd3ZvMk5UUG5Pb1hEVEp4bjZQZ2U0c0YxOHpWSkJ5aVladm5BEgQaAggAGq0EEgAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQIkECAAQABgAIAAqCQoCaXQVMCGNQCoPCghzZXJ2aWNlcxWVbfs_KgkKAml0FWDojz8qDwoIc2VydmljZXMVsJ6XQDK0AS9nb3RvP3VybD1DQUVTZXdIck96QVZWS0x5UUt4MTlYSUdrLWpYRzFRakppQXdCZWlqSWNQbDUzd05YSGhrMTM4VFVsQXFxQ1RCVmhOQWZQdERicmUtS1Mwcmd2TVQ4QW93TUhYWm1taXRoTEg0WGhKSXl4SGZOR0tCUmhQazFOcHUtaXVLVFQ4M1BERUpVRHd2bzJOVFBuT29YRFRKeG42UGdlNHNGMTh6VkpCeWlZWnZuQTo3UG9wdWxhciBJVCBTb2x1dGlvbiBQcm92aWRlcnMgaW4gPGI-UHVuZTwvYj4gLSBKdXN0ZGlhbELWAVBvcHVsYXIgSVQgU29sdXRpb24gUHJvdmlkZXJzIGluIDxiPlB1bmU8L2I-ICZtaWRkb3Q7IFV0bSBJbmZvdGVjaCAmbWlkZG90OyBNYXRyaXggQ29tcHV0ZXIgU29sdXRpb25zICZtaWRkb3Q7IFNhbnZlZXIgSW5mb3RlY2ggUHZ0IEx0ZCAmbWlkZG90OyBDb2RlcmVkIFNvZnR3YXJlcyBQdnQgTHRkICZtaWRkb3Q7IFByaXlhbSA8Yj5JdCBTZXJ2aWNlczwvYj4gUHZ0IEx0ZC4iAhABSABYAGgA",
+              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CrQBL2dvdG8_dXJsPUNBRVNld0hyT3pBVlZLTHlRS3gxOVhJR2stalhHMVFqSmlBd0JlaWpJY1BsNTN3TlhIaGsxMzhUVWxBcXFDVEJWaE5BZlB0RGJyZS1LUzByZ3ZNVDhBb3dNSFhabW1pdGhMSDRYaEpJeXhIZk5HS0JSaFBrMU5wdS1pdUtUVDgzUERFSlVEd3ZvMk5UUG5Pb1hEVEp4bjZQZ2U0c0YxOHpWSkJ5aVladm5BEgQaAggAGq0EEgAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQIkECAAQABgAIAAqCQoCaXQVMCGNQCoPCghzZXJ2aWNlcxWVbfs_KgkKAml0FWDojz8qDwoIc2VydmljZXMVsJ6XQDK0AS9nb3RvP3VybD1DQUVTZXdIck96QVZWS0x5UUt4MTlYSUdrLWpYRzFRakppQXdCZWlqSWNQbDUzd05YSGhrMTM4VFVsQXFxQ1RCVmhOQWZQdERicmUtS1Mwcmd2TVQ4QW93TUhYWm1taXRoTEg0WGhKSXl4SGZOR0tCUmhQazFOcHUtaXVLVFQ4M1BERUpVRHd2bzJOVFBuT29YRFRKeG42UGdlNHNGMTh6VkpCeWlZWnZuQTo3UG9wdWxhciBJVCBTb2x1dGlvbiBQcm92aWRlcnMgaW4gPGI-UHVuZTwvYj4gLSBKdXN0ZGlhbELWAVBvcHVsYXIgSVQgU29sdXRpb24gUHJvdmlkZXJzIGluIDxiPlB1bmU8L2I-ICZtaWRkb3Q7IFV0bSBJbmZvdGVjaCAmbWlkZG90OyBNYXRyaXggQ29tcHV0ZXIgU29sdXRpb25zICZtaWRkb3Q7IFNhbnZlZXIgSW5mb3RlY2ggUHZ0IEx0ZCAmbWlkZG90OyBDb2RlcmVkIFNvZnR3YXJlcyBQdnQgTHRkICZtaWRkb3Q7IFByaXlhbSA8Yj5JdCBTZXJ2aWNlczwvYj4gUHZ0IEx0ZC4iAhABSABYAGgA",
+              "source": "Justdial",
+              "read_more_link": "https://www.justdial.com/Pune/IT-Solution-Providers/nct-10278073#:~:text=Popular%20IT%20Solution%20Providers%20in,Pune&text=Utm%20Infotech&text=Matrix%20Computer%20Solutions&text=Sanveer%20Infotech%20Pvt%20Ltd&text=Codered%20Softwares%20Pvt%20Ltd&text=Priyam%20It%20Services%20Pvt%20Ltd"
+            }
+          ],
+          "related_searches": [
+            {
+              "block_position": 1,
+              "query": "It services it services software company pune reviews",
+              "link": "https://www.google.com/search?sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&q=It+services+it+services+software+company+pune+reviews&sa=X&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ1QJ6BAgnEAE",
+              "serpapi_link": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=It+services+it+services+software+company+pune+reviews&start=0"
+            },
+            {
+              "block_position": 1,
+              "query": "It services it services software company pune address",
+              "link": "https://www.google.com/search?sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&q=It+services+it+services+software+company+pune+address&sa=X&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ1QJ6BAgpEAE",
+              "serpapi_link": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=It+services+it+services+software+company+pune+address&start=0"
+            },
+            {
+              "block_position": 1,
+              "query": "It services it services software company pune contact number",
+              "link": "https://www.google.com/search?sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&q=It+services+it+services+software+company+pune+contact+number&sa=X&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ1QJ6BAgoEAE",
+              "serpapi_link": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=It+services+it+services+software+company+pune+contact+number&start=0"
+            }
+          ],
+          "pagination": {
+            "current": 1,
+            "next": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=10&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8NMDegQIJRAW",
+            "other_pages": {
+              "2": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=10&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAE",
+              "3": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=20&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAG",
+              "4": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=30&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAI",
+              "5": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=40&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAK",
+              "6": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=50&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAM",
+              "7": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=60&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAO",
+              "8": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=70&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAQ",
+              "9": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=80&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAS",
+              "10": "https://www.google.com/search?q=%22IT+Services%22+(%22IT+services%22+OR+%22software+company%22)+%22Pune%22+-site:linkedin.com/jobs&sca_esv=626b278fa8b05e36&gl=in&hl=en&sxsrf=APpeQntMwEbT_rbmCyitoIAODqVMmLvmLQ:1792069844610&ei=1NDQavnVI7q3qtsPyN2hoAE&start=90&sa=N&sstk=AS6-VmITqwuGSnMgvj_uHYxeG9uQ0A3wZ4k-CzK4YZF7Lvj6OfxEyQJWJ9OC0U5vzpjydn72O2MZJnY5sjeFT2EN2l9pVq-teG270A&ved=2ahUKEwj5j_-zjLyXAxW6m2oFHchuCBQQ8tMDegQIJRAU"
+            }
+          },
+          "serpapi_pagination": {
+            "current": 1,
+            "next_link": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=10",
+            "next": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=10",
+            "other_pages": {
+              "2": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=10",
+              "3": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=20",
+              "4": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=30",
+              "5": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=40",
+              "6": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=50",
+              "7": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=60",
+              "8": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=70",
+              "9": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=80",
+              "10": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22IT+Services%22+%28%22IT+services%22+OR+%22software+company%22%29+%22Pune%22+-site%3Alinkedin.com%2Fjobs&start=90"
+            }
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
   "connections": {
     "Intake Form": {
       "main": [
         [
           {
-            "node": "Parse Prompt (Groq)",
+            "node": "Prompt Not Empty",
             "type": "main",
             "index": 0
           }
@@ -85,7 +642,62 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Parameter Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Not Empty": {
+      "main": [
+        [
+          {
+            "node": "Parse Prompt (Groq)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parameter Normalizer": {
+      "main": [
+        [
+          {
+            "node": "Config Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Valid": {
+      "main": [
+        [
+          {
+            "node": "Split Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Queries": {
+      "main": [
+        [
+          {
+            "node": "SerpAPI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SerpAPI Request": {
+      "main": [
+        [
+          {
+            "node": "Extract Hits",
             "type": "main",
             "index": 0
           }
@@ -98,7 +710,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "8188c643-efba-49f5-81e7-2bae992cb298",
+  "versionId": "61211a6e-5c6e-44d4-ac7c-0095a6adaa6a",
   "meta": {
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
