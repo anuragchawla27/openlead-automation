@@ -3,3 +3,4 @@ n8n_data/
 *.json.bak
 credentials*.json
 service-account*.json
+tests/fixtures/scraped_*.json
