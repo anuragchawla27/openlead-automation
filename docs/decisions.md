@@ -5,3 +5,5 @@
 - Emails must appear verbatim in the page text or are set to null.
 - SerpAPI free plan: 250 searches. Dev ~100, QA ~60, reserve ~90. Cache all responses.
 Intake uses a Groq parse step plus a code normalizer. Defaults: 20 leads, B2B size 11-50. Track B roles must be the role sought (prompt rule plus code persona filter). Campaign ID hashes a lowercased, sorted config, so the same normalized config always gives the same ID
+Discovery uses pinned SerpAPI data in dev (1 credit spent, 249 left). Result filter = domain blocklist + list-page title heuristic, because ~60% of raw Google hits for the PDF dork are directories or listicles
+Reddit’s public JSON endpoint blocks scripts, so Track B uses SerpAPI with site:reddit.com. Candidate level is decided at extraction, not from SERP snippets, which are sometimes comment text.
