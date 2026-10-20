@@ -18,8 +18,8 @@
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.5,
       "position": [
-        -608,
-        -208
+        -640,
+        -432
       ],
       "id": "e7e04173-6df3-44e3-9dba-84cd8a0abace",
       "name": "Intake Form",
@@ -61,8 +61,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -32,
-        -432
+        -64,
+        -528
       ],
       "id": "1074b997-1f89-4a05-8b1e-32c7b60f2573",
       "name": "Parameter Normalizer"
@@ -210,8 +210,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        928,
-        -528
+        800,
+        -560
       ],
       "id": "4c72d783-759e-4e57-8ffb-2f82e28d2eb9",
       "name": "Extract Hits"
@@ -243,7 +243,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        656,
+        608,
         -544
       ],
       "id": "3b7ba46d-78d1-434a-998f-adb85a8ea962",
@@ -292,8 +292,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1056,
-        -336
+        976,
+        -544
       ],
       "id": "c9ae2710-1e5d-454e-bf05-fc01837d6273",
       "name": "Scrape Page",
@@ -307,8 +307,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1232,
-        -336
+        1088,
+        -352
       ],
       "id": "fcf707d5-8831-403d-98ce-6110d014d606",
       "name": "Clean Page Text"
@@ -333,8 +333,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1440,
-        -336
+        1200,
+        -528
       ],
       "id": "a32fef2b-134f-4545-b416-9cdd500b6348",
       "name": "Build LLM Context"
@@ -347,7 +347,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-120b\",\n  temperature: 0,\n  messages: [\n    { role: \"system\", content: \"You extract company facts from website text. Rules: 1) Use ONLY the provided text. 2) If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess. 3) Copy an email only if it appears character-for-character in the text; never construct one. 4) extracted_evidence_snippets: verbatim sentences copied exactly from the text supporting industry or role claims, max 3. 5) If the text is not a company website (error page, directory, parked domain), set extraction_successful=false. 6) estimated_employee_range and confidence_level must never be null.6) estimated_employee_range and confidence_level must never be null. headquarters_location: use only if the text says headquarters, head office, HQ, or (HQ) next to an address; a landing-page title like 'IT company in Pune' is not a headquarters. Otherwise null. 7) Output JSON only.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"lead_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"extraction_successful\",\"company_name\",\"official_website\",\"industry_sector\",\"headquarters_location\",\"company_description\",\"estimated_employee_range\",\"key_decision_maker\",\"extracted_evidence_snippets\",\"confidence_level\"],\n    properties: {\n      extraction_successful: { type: \"boolean\" },\n      company_name: { type: [\"string\",\"null\"] },\n      official_website: { type: [\"string\",\"null\"] },\n      industry_sector: { type: [\"string\",\"null\"] },\n      headquarters_location: { type: [\"string\",\"null\"] },\n      company_description: { type: [\"string\",\"null\"] },\n      estimated_employee_range: { type: \"string\", enum: [\"1-10\",\"11-50\",\"51-200\",\"201-500\",\"501+\",\"UNKNOWN\"] },\n      key_decision_maker: { type: \"object\", additionalProperties: false,\n        required: [\"full_name\",\"designation\",\"public_business_email\",\"linkedin_profile_url\"],\n        properties: { full_name: { type: [\"string\",\"null\"] }, designation: { type: [\"string\",\"null\"] }, public_business_email: { type: [\"string\",\"null\"] }, linkedin_profile_url: { type: [\"string\",\"null\"] } } },\n      extracted_evidence_snippets: { type: \"array\", items: { type: \"string\" } },\n      confidence_level: { type: \"string\", enum: [\"HIGH\",\"MEDIUM\",\"LOW\"] }\n    }\n  } } }\n} }}",
+        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-120b\",\n  temperature: 0,\n  messages: [\n    { role: \"system\", content: \"You extract company facts from website text. Rules: 1) Use ONLY the provided text. 2) If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess. 3) Copy an email only if it appears character-for-character in the text; never construct one. 4) extracted_evidence_snippets: verbatim sentences copied exactly from the text supporting industry or role claims, max 3. 5) If the text is not a company website (error page, directory, parked domain), set extraction_successful=false. 6) estimated_employee_range and confidence_level must never be null. 7) headquarters_location: use only if the text says headquarters, head office, HQ, or (HQ) next to an address; a landing-page title like 'IT company in Pune' is not a headquarters. Otherwise null. 8) company_contact_email: a general company inbox (info@, contact@, business@, sales@) copied character-for-character from the text; null if none. Never put a generic inbox in public_business_email. 9) Output JSON only.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"lead_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"extraction_successful\",\"company_name\",\"official_website\",\"industry_sector\",\"headquarters_location\",\"company_description\",\"estimated_employee_range\",\"key_decision_maker\",\"extracted_evidence_snippets\",\"confidence_level\",\"company_contact_email\"],\n    properties: {\n      extraction_successful: { type: \"boolean\" },\n      company_name: { type: [\"string\",\"null\"] },\n      official_website: { type: [\"string\",\"null\"] },\n      industry_sector: { type: [\"string\",\"null\"] },\n      headquarters_location: { type: [\"string\",\"null\"] },\n      company_description: { type: [\"string\",\"null\"] },\n      estimated_employee_range: { type: \"string\", enum: [\"1-10\",\"11-50\",\"51-200\",\"201-500\",\"501+\",\"UNKNOWN\"] },\n      key_decision_maker: { type: \"object\", additionalProperties: false,\n        required: [\"full_name\",\"designation\",\"public_business_email\",\"linkedin_profile_url\"],\n        properties: { full_name: { type: [\"string\",\"null\"] }, designation: { type: [\"string\",\"null\"] }, public_business_email: { type: [\"string\",\"null\"] }, linkedin_profile_url: { type: [\"string\",\"null\"] } } },\n      extracted_evidence_snippets: { type: \"array\", items: { type: \"string\" } },\n      confidence_level: { type: \"string\", enum: [\"HIGH\",\"MEDIUM\",\"LOW\"] },\n      company_contact_email: { type: [\"string\",\"null\"] }\n    }\n  } } }\n} }}",
         "options": {
           "batching": {
             "batch": {
@@ -360,7 +360,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1776,
+        1616,
         -672
       ],
       "id": "5305b5f5-4dd2-48da-b5c4-779c31ca2671",
@@ -382,12 +382,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const src = $('Build LLM Context').all().filter(i => i.json.llm_context);\nconst out = [];\nconst norm = s => String(s || '').replace(/\\s+/g, ' ').trim();\n// A quote must read like a sentence: at least 5 words and end in punctuation (menu fragments and bare titles fail)\nconst isSentence = q => /[.!?]$/.test(norm(q)) && norm(q).split(' ').length >= 5;\n\n$input.all().forEach((item, idx) => {\n  const s = src[idx] ? src[idx].json : {};\n  let o;\n  try {\n    const txt = item.json.choices[0].message.content.replace(/```json|```/g, '').trim();\n    o = JSON.parse(txt);\n  } catch (e) {\n    const msg = String(item.json.error?.message || e.message);\n    out.push({ json: { ...s, extraction_status: 'EXTRACTION_FAILED', extraction_error: msg, retryable: /socket|TLS|ECONN|ETIMEDOUT|429|50\\d/i.test(msg) } });\n    return;\n  }\n  // Check against everything the model was shown (SERP header + page text)\n  const hay = String(s.llm_context || '') + ' ' + String(s.page_text || '');\n  const text = norm(hay);\n  const flags = [];\n\n  const snippets = (o.extracted_evidence_snippets || []).filter(q => {\n    const ok = isSentence(q) && text.includes(norm(q));\n    if (!ok) flags.push('DROPPED_UNVERIFIED_SNIPPET');\n    return ok;\n  });\n\n  const dm = o.key_decision_maker || {};\n  let email = dm.public_business_email || null;\n  if (email && !hay.toLowerCase().includes(email.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); email = null; }\n\n  let name = dm.full_name || null;\n  if (name && !text.toLowerCase().includes(norm(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }\n\n  out.push({ json: {\n    ...s,\n    extraction_status: 'EXTRACTED',\n    extraction_successful: !!o.extraction_successful,\n    company_name: o.company_name,\n    official_website: 'https://' + (s.normalized_domain || ''),\n    industry_sector: o.industry_sector,\n    headquarters_location: o.headquarters_location,\n    company_description: o.company_description,\n    estimated_employee_range: o.estimated_employee_range,\n    key_decision_maker: { full_name: name, designation: name ? dm.designation : null, public_business_email: email, linkedin_profile_url: null },\n    extracted_evidence_snippets: snippets,\n    confidence_level: o.confidence_level,\n    verification_flags: flags\n  } });\n});\nreturn out;"
+        "jsCode": "const src = $('Build LLM Context').all().filter(i => i.json.llm_context);\nconst out = [];\nconst norm = s => String(s || '').replace(/\\s+/g, ' ').trim();\nconst isSentence = q => /[.!?]$/.test(norm(q)) && norm(q).split(' ').length >= 5;\nconst BOILERPLATE = /all rights reserved|privacy policy|cookie|terms (&|and) conditions|copyright/i;\n\n$input.all().forEach((item, idx) => {\n  const s = src[idx] ? src[idx].json : {};\n  let o;\n  try {\n    const content = item.json?.choices?.[0]?.message?.content;\n    if (!content) throw new Error(item.json?.error?.message || 'NO_GROQ_RESPONSE');\n    const txt = content.replace(/```json|```/g, '').trim();\n    o = JSON.parse(txt);\n  } catch (e) {\n    const msg = String(item.json?.error?.message || e.message);\n    out.push({ json: { ...s, extraction_status: 'EXTRACTION_FAILED', extraction_error: msg, retryable: /socket|TLS|ECONN|ETIMEDOUT|429|50\\d/i.test(msg) } });\n    return;\n  }\n  const hay = String(s.llm_context || '') + ' ' + String(s.page_text || '');\n  const text = norm(hay);\n  const flags = [];\n\n  const snippets = (o.extracted_evidence_snippets || []).filter(q => {\n    const ok = isSentence(q) && !BOILERPLATE.test(q) && text.includes(norm(q));\n    if (!ok) flags.push('DROPPED_UNVERIFIED_SNIPPET');\n    return ok;\n  });\n\n  const dm = o.key_decision_maker || {};\n  let email = dm.public_business_email || null;\n  if (email && !hay.toLowerCase().includes(email.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); email = null; }\n\n  let name = dm.full_name || null;\n  if (name && !text.toLowerCase().includes(norm(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }\n\n  let cemail = o.company_contact_email || null;\n  if (cemail && !hay.toLowerCase().includes(cemail.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); cemail = null; }\n  // Never trust model self-rated confidence: derive a cap from what was actually verified\nlet conf = o.confidence_level;\nconst verifiedFacts = [!!name, !!email, o.estimated_employee_range !== 'UNKNOWN', snippets.length >= 2].filter(Boolean).length;\nif (verifiedFacts < 2) conf = 'LOW';\nelse if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';\n\n  out.push({ json: {\n    ...s,\n    extraction_status: 'EXTRACTED',\n    extraction_successful: !!o.extraction_successful,\n    company_name: o.company_name,\n    official_website: 'https://' + (s.normalized_domain || ''),\n    industry_sector: o.industry_sector,\n    headquarters_location: o.headquarters_location,\n    company_description: o.company_description,\n    estimated_employee_range: o.estimated_employee_range,\n    key_decision_maker: { full_name: name, designation: name ? dm.designation : null, public_business_email: email, linkedin_profile_url: null },\n    company_contact_email: cemail,\n    extracted_evidence_snippets: snippets,\n    confidence_level: conf,\n    verification_flags: flags\n  } });\n});\nreturn out;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1984,
+        1792,
         -672
       ],
       "id": "e481f1a8-bc0c-448b-b7b5-d4021747475b",
@@ -421,8 +421,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1600,
-        -544
+        1392,
+        -528
       ],
       "id": "240bc8da-bdc2-42e4-8a83-7661cdf28a34",
       "name": "Has Context?"
@@ -920,6 +920,134 @@
           "item": 3
         }
       }
+    ],
+    "Groq Extract": [
+      {
+        "json": {
+          "id": "chatcmpl-8df2e099-2fe3-4a46-b993-93656af51909",
+          "object": "chat.completion",
+          "created": 1792494470,
+          "model": "openai/gpt-oss-120b",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "{\"extraction_successful\":true,\"company_name\":\"Cybage Software Pvt. Ltd.\",\"official_website\":null,\"industry_sector\":null,\"headquarters_location\":null,\"company_description\":\"Digital Product Engineering and Outsourced IT Services | Technology Consulting\",\"estimated_employee_range\":\"UNKNOWN\",\"key_decision_maker\":{\"full_name\":null,\"designation\":null,\"public_business_email\":null,\"linkedin_profile_url\":null},\"extracted_evidence_snippets\":[\"Digital Product Engineering and Outsourced IT Services | Technology Consulting: Cybage\",\"Cybage Software Pvt. Ltd. ... 6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014.\",\"Email: business@cybage.com\"],\"confidence_level\":\"LOW\",\"company_contact_email\":\"business@cybage.com\"}",
+                "reasoning": "We need to extract fields.\n\nWe have a search result snippet and page content. It's a company website (Cybage Software Pvt. Ltd.). So extraction_successful = true.\n\ncompany_name: \"Cybage Software Pvt. Ltd.\" appears. Use that.\n\nofficial_website: Not directly given, but we have no URL. The snippet doesn't include URL. Should we set null? The schema requires official_website not null. Must be string or null. If not provided, set null. That's allowed.\n\nindustry_sector: The page lists \"Industries\" and categories like Media & Advertising, Software & Hi-Tech, etc. But we need a sector. The snippet says \"Digital Product Engineering and Outsourced IT Services\". Could be \"IT Services\" or \"Software Development\". However rule: only if explicitly stated. There's \"Digital Product Engineering and Outsourced IT Services\". That's a description, not sector. Could we infer sector? Probably not; need explicit sector term. Not present. So industry_sector = null.\n\nheadquarters_location: The snippet includes address: \"6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014.\" It says not explicitly \"headquarters\". But it's likely address. However rule: only if text says headquarters, head office, HQ, or (HQ) next to address. Not present. So headquarters_location = null.\n\ncompany_description: Could use description from page: \"Digital Product Engineering and Outsourced IT Services | Technology Consulting\". That's a description. It's present. So we can set that string.\n\nestimated_employee_range: Not given. Must not be null; must be one of enumerated values or UNKNOWN. Since not stated, set \"UNKNOWN\". confidence_level: Since we have some info but not all, maybe LOW. Rule: if field not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). So confidence_level = \"LOW\".\n\ncompany_contact_email: General inbox emails: we have \"business@cybage.com\". That's a general company inbox (business@). So set that.\n\nkey_decision_maker: Need full_name, designation, public_business_email, linkedin_profile_url. Not present. Must still include object with required fields. If not present, set each to null. But rule: if not explicitly stated, return null. So all null. However need to include fields. So full_name null, designation null, public_business_email null, linkedin_profile_url null.\n\nextracted_evidence_snippets: up to 3 sentences verbatim supporting industry or role claims. Provide sentences that mention industry sector or description. For example: \"Digital Product Engineering and Outsourced IT Services | Technology Consulting: Cybage\". Also \"Cybage Software Pvt. Ltd. ... 6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014.\" Also \"Email: business@cybage.com\". Provide up to 3.\n\nMake sure JSON includes all required fields.\n\nLet's craft JSON.\n\nCheck schema: key_decision_maker required fields: full_name, designation, public_business_email, linkedin_profile_url. So include them all as null.\n\ncompany_contact_email can be null or string. We'll set string.\n\nofficial_website null.\n\nindustry_sector null.\n\nheadquarters_location null.\n\ncompany_description string.\n\nestimated_employee_range \"UNKNOWN\".\n\nconfidence_level \"LOW\".\n\nextraction_successful true.\n\nextracted_evidence_snippets array of strings.\n\nNow produce compact JSON.\n\n"
+              },
+              "logprobs": null,
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "queue_time": 0.351611185,
+            "prompt_tokens": 1031,
+            "prompt_time": 0.188166692,
+            "completion_tokens": 916,
+            "completion_time": 1.918314911,
+            "total_tokens": 1947,
+            "total_time": 2.106481603,
+            "completion_tokens_details": {
+              "reasoning_tokens": 729
+            }
+          },
+          "usage_breakdown": null,
+          "system_fingerprint": "fp_f640395b96",
+          "x_groq": {
+            "id": "req_01m5cfxz9ze5yrrva7avq3zbbn",
+            "seed": 1388096592
+          },
+          "service_tier": "on_demand"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      },
+      {
+        "json": {
+          "id": "chatcmpl-4c026fbd-90dc-4ce6-8ede-d9bdb0252120",
+          "object": "chat.completion",
+          "created": 1792494476,
+          "model": "openai/gpt-oss-120b",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "{\"extraction_successful\":true,\"company_name\":\"Progressive Techserve\",\"official_website\":null,\"industry_sector\":\"IT Services\",\"headquarters_location\":null,\"company_description\":\"Partner with a Trusted IT Service Provider in Pune, Maharashtra. With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\",\"estimated_employee_range\":\"UNKNOWN\",\"key_decision_maker\":{\"full_name\":null,\"designation\":null,\"public_business_email\":null,\"linkedin_profile_url\":null},\"extracted_evidence_snippets\":[\"Partner with a Trusted IT Service Provider in Pune, Maharashtra.\",\"With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\",\"Progressive Techserve (formerly known as Progressive Infotech)\"],\"confidence_level\":\"LOW\",\"company_contact_email\":null}",
+                "reasoning": "We need to extract fields from provided text. It's a search result snippet, not a full website. The text includes company name Progressive Techserve, description, services, industries, etc. We need to decide extraction_successful: The text is not a full website page but appears to be a search result snippet with some content. It's likely considered a website content (maybe from a landing page). It's not an error page. So extraction_successful = true.\n\nNow fill fields:\n\ncompany_name: \"Progressive Techserve\" (appears). Also note \"formerly known as Progressive Infotech\". Use the current name.\n\nofficial_website: Not provided. No URL. So null.\n\nindustry_sector: The text mentions \"IT services\", \"IT Company\". Could be \"IT Services\" or \"Information Technology\". The field expects a string. Since it's explicitly stated? The snippet says \"IT Company in Pune, Maharashtra\". Also \"Trusted IT Service Provider\". So we can set \"Information Technology\" or \"IT Services\". Use as appears: maybe \"IT Services\". The rule: use only if explicitly stated. \"IT Service Provider\" is there. So industry_sector = \"IT Services\". Or \"IT\". I'll choose \"IT Services\".\n\nheadquarters_location: Not explicitly given. Only \"Pune, Maharashtra\". Not stated as headquarters. So null.\n\ncompany_description: Could extract a sentence: \"Partner with a Trusted IT Service Provider in Pune, Maharashtra. With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\" That's a description. Use a sentence from text. Provide null if not? It's present. So include that.\n\nestimated_employee_range: Not given. Must not be null; must be one of enum values, cannot be null. If not stated, set \"UNKNOWN\". So \"UNKNOWN\".\n\nconfidence_level: Since we have limited info, set \"LOW\" as per rule if not explicit? The rule: estimated_employee_range and confidence_level must never be null. If not enough confidence, set LOW. So confidence_level = \"LOW\".\n\ncompany_contact_email: Look for general inbox like info@, contact@, business@, sales@. Not present. There's \"Business Email *\" placeholder but no actual email. So null.\n\nkey_decision_maker: Must include full_name, designation, public_business_email, linkedin_profile_url. Since not provided, we must set each to null? But required fields cannot be null? The schema says each property type includes null, so can be null. So we set all to null.\n\nextracted_evidence_snippets: up to 3 sentences verbatim supporting industry or role claims. Provide sentences that mention industry: e.g., \"Partner with a Trusted IT Service Provider in Pune, Maharashtra.\" and \"With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\" and maybe \"Progressive Techserve (formerly known as Progressive Infotech)\"? That supports name. Provide up to 3.\n\nNow construct JSON.\n\nCheck required fields: extraction_successful, company_name, official_website, industry_sector, headquarters_location, company_description, estimated_employee_range, key_decision_maker, extracted_evidence_snippets, confidence_level, company_contact_email.\n\nAll present.\n\nNow produce compact JSON.\n\n"
+              },
+              "logprobs": null,
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "queue_time": 0.220353305,
+            "prompt_tokens": 1001,
+            "prompt_time": 0.046664023,
+            "completion_tokens": 843,
+            "completion_time": 1.75621541,
+            "total_tokens": 1844,
+            "total_time": 1.802879433,
+            "completion_tokens_details": {
+              "reasoning_tokens": 666
+            }
+          },
+          "usage_breakdown": null,
+          "system_fingerprint": "fp_27194a498a",
+          "x_groq": {
+            "id": "req_01m5cfy54eedrt0pegxte09cew",
+            "seed": 1984901771
+          },
+          "service_tier": "on_demand"
+        },
+        "pairedItem": {
+          "item": 1
+        }
+      },
+      {
+        "json": {
+          "id": "chatcmpl-28b28bff-8645-4038-82af-6fb8b21f5ad9",
+          "object": "chat.completion",
+          "created": 1792494483,
+          "model": "openai/gpt-oss-120b",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "{\"extraction_successful\":true,\"company_name\":\"Sapphire Software Solutions\",\"official_website\":null,\"industry_sector\":\"IT services\",\"headquarters_location\":\"C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\",\"company_description\":\"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\",\"estimated_employee_range\":\"UNKNOWN\",\"key_decision_maker\":{\"full_name\":null,\"designation\":null,\"public_business_email\":null,\"linkedin_profile_url\":null},\"extracted_evidence_snippets\":[\"Top IT Company in Pune, with a focus on full-service tech solutions, such as software engineering, web design, mobile app development, and website development.\",\"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\",\"India(HQ) C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\"],\"confidence_level\":\"HIGH\",\"company_contact_email\":\"[email protected]\"}",
+                "reasoning": "We need to extract fields per schema.\n\nWe have a search result snippet, not the full website, but includes content that looks like a website page. It's likely a company website content. We need to decide extraction_successful: Since we have company info, not error page, set true.\n\nNow fill fields:\n\ncompany_name: \"Sapphire Software Solutions\" appears multiple times. So set that.\n\nofficial_website: Not provided. No URL. So null.\n\nindustry_sector: It's an IT company, providing IT services. Need evidence snippet. We can set \"Information Technology\" maybe. But must be explicit in text. The text says \"Top IT Company in Pune\", \"IT services\", \"IT sector\". So we can set industry_sector as \"IT services\" or \"Information Technology\". Use something directly from text: \"IT services\". We'll set \"IT services\". It's a string.\n\nheadquarters_location: The text says \"India(HQ) C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\". So we can set that address. Use exactly as appears: \"C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\". Provide as string.\n\ncompany_description: Provide a summary from text. Must be from text, not invented. Use a sentence from text: \"Our all-inclusive managed IT infrastructure solutions are made to assist you in doing exactly that.\" But need description of company. Could combine multiple sentences but must be verbatim? The description field can be any string, but we should use text. Probably we can copy a sentence: \"Sapphire Software Solutions is a certified IT company that helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\" That sentence appears? The text: \"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\" Slightly different. We'll copy that exact sentence: \"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\" That's a description.\n\ncompany_contact_email: General inbox email. The text shows \"[email protected]\" multiple times. That's a placeholder but appears as \"[email protected]\"? Actually the snippet shows \"[email protected]\" (masked). It appears as \"[email protected]\" which is not a real email. But it's still an email address format. It's a generic inbox? It is \"info@sapphiresoftware.com\"? Not visible. The placeholder is \"[email protected]\". Since we must copy exactly as appears, we can include that string. It's a generic inbox? It is \"info@sapphiresoftware.com\"? Not sure. The placeholder is \"[email protected]\". We'll treat that as email. So company_contact_email = \"[email protected]\". (including brackets?). The text shows \"[email protected]\" with brackets. Should we include brackets? The email appears with brackets to hide. The rule: copy email exactly as appears. So include \"[email protected]\". That's fine.\n\nkey_decision_maker: Need full_name, designation, public_business_email, linkedin_profile_url. Not present. So all fields null? But required fields cannot be null? The schema requires those fields present, but they can be null? The property types allow null? For full_name etc they are type [\"null\",\"string\"], but required fields list includes them, so they must be present but can be null. So we set each to null.\n\npublic_business_email: Must be a personal email? Not present. So null.\n\nlinkedin_profile_url: null.\n\nestimated_employee_range: Not stated. Must not be null; must be one of enum values, cannot be null. If not stated, set \"UNKNOWN\". So set \"UNKNOWN\".\n\nconfidence_level: Since we have explicit info, but rule says if not explicit, set LOW. Here we have explicit for many fields, but still we can set \"HIGH\"? The rule: \"If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess.\" Confidence_level is overall confidence. Since we have explicit data, we can set \"HIGH\". But is there rule that confidence_level must be set based on overall? Not explicit. We'll set \"HIGH\" because we have clear info.\n\nextracted_evidence_snippets: up to 3 sentences verbatim supporting industry or role claims. Provide sentences that show industry (IT services) and maybe headquarters. Provide up to 3.\n\nSelect:\n\n1. \"Top IT Company in Pune, with a focus on full-service tech solutions, such as software engineering, web design, mobile app development, and website development.\"\n2. \"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\"\n3. \"India(HQ) C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\"\n\nThese are verbatim.\n\nNow construct JSON with required fields.\n\nCheck required fields: extraction_successful, company_name, official_website, industry_sector, headquarters_location, company_description, estimated_employee_range, key_decision_maker, extracted_evidence_snippets, confidence_level, company_contact_email.\n\nAll present.\n\nNow produce compact JSON."
+              },
+              "logprobs": null,
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "queue_time": 0.216735827,
+            "prompt_tokens": 1596,
+            "prompt_time": 0.067967541,
+            "completion_tokens": 1368,
+            "completion_time": 2.829197384,
+            "total_tokens": 2964,
+            "total_time": 2.8971649250000002,
+            "completion_tokens_details": {
+              "reasoning_tokens": 1116
+            }
+          },
+          "usage_breakdown": null,
+          "system_fingerprint": "fp_c15aa9c1b7",
+          "x_groq": {
+            "id": "req_01m5cfyazveqkajrq258j1bman",
+            "seed": 1558891224
+          },
+          "service_tier": "on_demand"
+        },
+        "pairedItem": {
+          "item": 2
+        }
+      }
     ]
   },
   "connections": {
@@ -1101,7 +1229,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "ea2a34e0-5584-48e5-9674-a74615c4f4e6",
+  "versionId": "6560b100-ba09-4e02-99b8-20cf080e8f12",
   "meta": {
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },

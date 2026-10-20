@@ -13,12 +13,13 @@
     "key_decision_maker": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["full_name", "designation", "public_business_email", "linkedin_profile_url"],
+      "required": ["extraction_successful", "company_name", "official_website", "industry_sector", "headquarters_location", "company_description", "estimated_employee_range", "key_decision_maker", "extracted_evidence_snippets", "confidence_level", "company_contact_email"],
       "properties": {
         "full_name": { "type": ["string", "null"] },
         "designation": { "type": ["string", "null"] },
         "public_business_email": { "type": ["string", "null"] },
-        "linkedin_profile_url": { "type": ["string", "null"] }
+        "linkedin_profile_url": { "type": ["string", "null"]},
+        "company_contact_email": { "type": ["string", "null"] }
       }
     },
     "extracted_evidence_snippets": { "type": "array", "items": { "type": "string" } },
