@@ -28,3 +28,4 @@
 - Generic inboxes (info@, business@) go in `company_contact_email`, never in the decision-maker email.
 - Confidence is derived in code from verified facts (decision maker, email, size, 2+ quotes), not from the model's self-rating.
 - Network drops are marked `retryable`.
+Parked or error pages under 400 characters are tagged PAGE_UNUSABLE before the LLM step

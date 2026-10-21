@@ -143,7 +143,7 @@
       "typeVersion": 2,
       "position": [
         288,
-        -624
+        -656
       ],
       "id": "fcd95101-c3d9-4b6d-9863-18b2caeeaa84",
       "name": "Split Queries"
@@ -292,8 +292,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        976,
-        -544
+        960,
+        -560
       ],
       "id": "c9ae2710-1e5d-454e-bf05-fc01837d6273",
       "name": "Scrape Page",
@@ -307,8 +307,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1088,
-        -352
+        1120,
+        -560
       ],
       "id": "fcf707d5-8831-403d-98ce-6110d014d606",
       "name": "Clean Page Text"
@@ -333,8 +333,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1200,
-        -528
+        1456,
+        -624
       ],
       "id": "a32fef2b-134f-4545-b416-9cdd500b6348",
       "name": "Build LLM Context"
@@ -360,7 +360,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1616,
+        1888,
         -672
       ],
       "id": "5305b5f5-4dd2-48da-b5c4-779c31ca2671",
@@ -387,7 +387,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1792,
+        2112,
         -672
       ],
       "id": "e481f1a8-bc0c-448b-b7b5-d4021747475b",
@@ -421,11 +421,24 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1392,
-        -528
+        1664,
+        -656
       ],
       "id": "240bc8da-bdc2-42e4-8a83-7661cdf28a34",
       "name": "Has Context?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const PARKED = /(this domain (is|may be) for sale|domain (is )?parked|buy this domain|account suspended|coming soon|under construction|page not found|access denied|just a moment|enable javascript|404 not found)/i;\nreturn $input.all().map(i => {\n  const j = i.json;\n  if (j.scrape_status !== 'SCRAPED') return i;\n  const t = String(j.page_text || '');\n  if (t.length < 400 && PARKED.test(t)) {\n    return { json: { ...j, scrape_status: 'PAGE_UNUSABLE', scrape_error: 'PARKED_OR_ERROR_PAGE' } };\n  }\n  return i;\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        -560
+      ],
+      "id": "e762661e-766d-4030-8f35-b9f7693cb0e2",
+      "name": "Mark Unusable Pages"
     }
   ],
   "pinData": {
@@ -1183,7 +1196,7 @@
       "main": [
         [
           {
-            "node": "Build LLM Context",
+            "node": "Mark Unusable Pages",
             "type": "main",
             "index": 0
           }
@@ -1222,6 +1235,17 @@
           }
         ]
       ]
+    },
+    "Mark Unusable Pages": {
+      "main": [
+        [
+          {
+            "node": "Build LLM Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -1229,7 +1253,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "6560b100-ba09-4e02-99b8-20cf080e8f12",
+  "versionId": "8ad4abeb-2aa0-4e41-9dc2-934ce5c8bbe5",
   "meta": {
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
