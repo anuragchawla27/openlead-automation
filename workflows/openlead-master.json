@@ -538,6 +538,19 @@
       ],
       "id": "fa7ba235-9cfc-4b1c-8c61-9abc8322f7b8",
       "name": "Merge Extractions"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst FREE = ['gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com','proton.me','protonmail.com','icloud.com','rediffmail.com'];\nconst GENERIC = /^(info|contact|business|sales|support|hello|admin|office|enquiry|inquiry|finance|hr|careers|jobs|whistleblower|marketing|accounts|billing|help|team|mail|webmaster)([._+-]|@)/i;\nconst RFC = /^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;\nconst hostOf = u => { const m = String(u || '').match(/^(?:https?:\\/\\/)?([^\\/?#:]+)/i); return m ? m[1].toLowerCase().replace(/^www\\./, '') : ''; };\n\nreturn $input.all().map(item => {\n  const e = item.json;\n  const errors = [];\n  const out = { ...e };\n\n  // 1. Structural gate (fallback-model items are gated on company_name)\n  const usable = e.extraction_status === 'EXTRACTED' && !!e.company_name && (e.extraction_successful || e.model_used);\n  if (!usable) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: e.extraction_status === 'EXTRACTED' ? 'ERR_EMPTY_EXTRACTION' : 'ERR_NOT_EXTRACTED', rejection_veto: true } };\n  }\n\n  // 2. Domain from the scraped URL (never from the model)\n  const domain = hostOf(e.source_url) || e.normalized_domain || '';\n  if (!domain || !/\\.[a-z]{2,}$/i.test(domain)) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'ERR_MALFORMED_URL', rejection_veto: true } };\n  }\n  out.normalized_domain = domain;\n\n  // 3. Exclusion veto\n  const hay = ((e.company_name || '') + ' ' + (e.company_description || '') + ' ' + (e.industry_sector || '')).toLowerCase();\n  const hit = (cfg.exclusion_keywords || []).find(x => x && hay.includes(String(x).toLowerCase()));\n  if (hit) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'VETO_EXCLUSION: ' + hit, rejection_veto: true } };\n  }\n\n  // 4. Email classification (decision maker first, then company inbox)\n  const dm = e.key_decision_maker || {};\n  const rawEmail = (dm.public_business_email || e.company_contact_email || '').trim();\n  let verified_email = null, email_status = 'UNAVAILABLE';\n  if (rawEmail) {\n    if (!RFC.test(rawEmail) || /\\.\\./.test(rawEmail)) { email_status = 'INVALID_SYNTAX'; }\n    else {\n      verified_email = rawEmail;\n      const edomain = rawEmail.split('@')[1].toLowerCase();\n      if (FREE.includes(edomain)) email_status = 'FREE_WEBMAIL';\n      else if (GENERIC.test(rawEmail)) email_status = 'GENERIC_INBOX';\n      else email_status = 'SYNTAX_VALID';\n      if (!/(^|\\.)/.test(edomain) || (edomain !== domain && !edomain.endsWith('.' + domain) && !domain.endsWith('.' + edomain))) {\n        if (email_status === 'SYNTAX_VALID') email_status = 'DOMAIN_MISMATCH';\n      }\n    }\n  }\n\n  // 5. Decision maker counts only when a verbatim quote supports the designation\n  const quotes = (e.extracted_evidence_snippets || []).join(' ').toLowerCase();\n  const desig = String(dm.designation || '').toLowerCase();\n  const dm_supported = !!(dm.full_name && desig && quotes.includes(String(dm.full_name).toLowerCase()) && quotes.includes(desig));\n\n  return { json: {\n    ...out,\n    validation_status: 'VALIDATED',\n    verified_email, email_status,\n    decision_maker_supported: dm_supported,\n    evidence_count: (e.extracted_evidence_snippets || []).length,\n    validation_errors: errors,\n    validated_at: new Date().toISOString()\n  } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        -240
+      ],
+      "id": "f6572d65-68a0-40f0-87fd-2c58f5aa4e10",
+      "name": "Validation Controller"
     }
   ],
   "pinData": {
@@ -1396,6 +1409,17 @@
           }
         ]
       ]
+    },
+    "Merge Extractions": {
+      "main": [
+        [
+          {
+            "node": "Validation Controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -1403,7 +1427,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "7f84afb7-6d82-4237-a335-da942248cf86",
+  "versionId": "b4df1a7f-d271-4764-9620-586f1bea32e9",
   "meta": {
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
