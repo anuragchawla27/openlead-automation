@@ -30,3 +30,4 @@
 - Network drops are marked `retryable`.
 Parked or error pages under 400 characters are tagged PAGE_UNUSABLE before the LLM step. Retryable extraction failures fall back to gpt-oss-20b, tagged model_used and capped at LOW confidence
 Scoring follows the PDF table (0 points for missing or unsupported decision maker). Unknown HQ scores 50. A different Indian city than the target scores 50. Vetoed leads route to Quarantine with score 0
+Dedup key is a hash of the normalized domain (www and common subdomains stripped). crypto is blocked in the sandbox, so a deterministic 64-bit hash is used. In-run dedupe uses a Set; cross-run uses workflow static data now, moving to the Sheets Master tab on Day 12

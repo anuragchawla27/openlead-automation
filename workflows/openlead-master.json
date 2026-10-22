@@ -636,6 +636,29 @@
                 ],
                 "combinator": "and"
               }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ce0aca08-be62-43fd-9ea1-64ef4c00a6cc",
+                    "leftValue": "={{ $json.routing_target }}",
+                    "rightValue": "DUPLICATE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
             }
           ]
         },
@@ -644,11 +667,24 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        3024,
+        3232,
         -384
       ],
       "id": "059f71af-c640-47a2-9c6c-95fa17f6127a",
       "name": "Score Router"
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.seen = staticData.seen || {};\n\n// Hash: try SHA-256, fall back to a deterministic pure-JS hash\nfunction hashOf(s) {\n  try {\n    const c = require('crypto');\n    return 'sha256:' + c.createHash('sha256').update(s).digest('hex').slice(0, 32);\n  } catch (e) {\n    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;\n    for (let i = 0; i < s.length; i++) {\n      const ch = s.charCodeAt(i);\n      h1 = Math.imul(h1 ^ ch, 2654435761);\n      h2 = Math.imul(h2 ^ ch, 1597334677);\n    }\n    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);\n    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);\n    return 'h64:' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);\n  }\n}\n\n// Normalize: lowercase, strip www, strip common subdomains and country-level duplicates\nfunction canonicalDomain(d) {\n  let x = String(d || '').toLowerCase().trim().replace(/^www\\./, '');\n  x = x.replace(/^(m|mobile|portal|app|web|en|in)\\./, '');\n  return x;\n}\n\nconst batchSeen = new Set();\nreturn $input.all().map(item => {\n  const e = item.json;\n  const domain = canonicalDomain(e.normalized_domain);\n  if (!domain) return { json: { ...e, dedup_status: 'NO_DOMAIN' } };\n  const key = hashOf(domain);\n  const emailKey = e.verified_email ? hashOf(String(e.verified_email).toLowerCase()) : null;\n\n  const dupInRun = batchSeen.has(key);\n  const dupAcross = !!staticData.seen[key];\n  batchSeen.add(key);\n\n  if (dupInRun || dupAcross) {\n    return { json: { ...e, domain_hash: key, dedup_status: dupAcross ? 'DUPLICATE_PREVIOUS_RUN' : 'DUPLICATE_IN_RUN', routing_target: 'DUPLICATE', first_seen_at: staticData.seen[key] || null } };\n  }\n  // Register only leads that will be stored (not quarantine vetoes with no value)\n  staticData.seen[key] = new Date().toISOString();\n  return { json: { ...e, domain_hash: key, email_hash: emailKey, normalized_domain: domain, dedup_status: 'NEW' } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3024,
+        -368
+      ],
+      "id": "e9a5bde7-ebe4-45ec-9bb0-fae826567fd2",
+      "name": "Dedup Check"
     }
   ],
   "pinData": {
@@ -1534,6 +1570,17 @@
       "main": [
         [
           {
+            "node": "Dedup Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedup Check": {
+      "main": [
+        [
+          {
             "node": "Score Router",
             "type": "main",
             "index": 0
@@ -1547,7 +1594,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "07c909a3-6c67-4705-b21a-7fd87fddda4a",
+  "versionId": "8545f82c-e682-4bfb-a40c-51ec7d1c03d5",
   "meta": {
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
