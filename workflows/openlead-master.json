@@ -187,8 +187,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        448,
-        -544
+        464,
+        -656
       ],
       "id": "bdec6e8a-87dd-4212-84c8-e0de9c70d3da",
       "name": "SerpAPI Request",
@@ -210,8 +210,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        800,
-        -560
+        816,
+        -640
       ],
       "id": "4c72d783-759e-4e57-8ffb-2f82e28d2eb9",
       "name": "Extract Hits"
@@ -243,8 +243,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        608,
-        -544
+        624,
+        -640
       ],
       "id": "3b7ba46d-78d1-434a-998f-adb85a8ea962",
       "name": "Is B2B?"
@@ -292,8 +292,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        960,
-        -560
+        976,
+        -640
       ],
       "id": "c9ae2710-1e5d-454e-bf05-fc01837d6273",
       "name": "Scrape Page",
@@ -307,8 +307,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
-        -560
+        1136,
+        -640
       ],
       "id": "fcf707d5-8831-403d-98ce-6110d014d606",
       "name": "Clean Page Text"
@@ -333,8 +333,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1456,
-        -624
+        1488,
+        -640
       ],
       "id": "a32fef2b-134f-4545-b416-9cdd500b6348",
       "name": "Build LLM Context"
@@ -360,8 +360,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1888,
-        -672
+        1840,
+        -640
       ],
       "id": "5305b5f5-4dd2-48da-b5c4-779c31ca2671",
       "name": "Groq Extract",
@@ -387,8 +387,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2112,
-        -672
+        2048,
+        -640
       ],
       "id": "e481f1a8-bc0c-448b-b7b5-d4021747475b",
       "name": "Verify Extraction"
@@ -421,8 +421,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1664,
-        -656
+        1680,
+        -432
       ],
       "id": "240bc8da-bdc2-42e4-8a83-7661cdf28a34",
       "name": "Has Context?"
@@ -434,8 +434,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1296,
-        -560
+        1312,
+        -640
       ],
       "id": "e762661e-766d-4030-8f35-b9f7693cb0e2",
       "name": "Mark Unusable Pages"
@@ -468,8 +468,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2320,
-        -672
+        2224,
+        -640
       ],
       "id": "33765ef3-0fd4-4153-b113-07ad1f31619b",
       "name": "Needs Retry?"
@@ -533,8 +533,8 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        2688,
-        -368
+        2576,
+        -608
       ],
       "id": "fa7ba235-9cfc-4b1c-8c61-9abc8322f7b8",
       "name": "Merge Extractions"
@@ -546,11 +546,109 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2912,
-        -240
+        2816,
+        -592
       ],
       "id": "f6572d65-68a0-40f0-87fd-2c58f5aa4e10",
       "name": "Validation Controller"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst lc = s => String(s || '').toLowerCase();\nconst SENIOR = /(founder|co-founder|ceo|cto|chief|managing director|president|owner|vp|vice president|director)/i;\n\nreturn $input.all().map(item => {\n  const e = item.json;\n\n  if (e.validation_status !== 'VALIDATED') {\n    return { json: { ...e, lead_score: 0, sub_scores: {}, routing_target: 'QUARANTINE', score_reason: e.rejection_reason || 'NOT_VALIDATED' } };\n  }\n\n  const dm = e.key_decision_maker || {};\n\n  // Industry (30%): 100 direct match, 50 adjacent tech, 0 mismatch\n  const ind = lc(e.industry_sector + ' ' + e.company_description);\n  const target = lc(cfg.target_industry);\n  const words = target.split(/\\s+/).filter(w => w.length > 3);\n  const direct = ind.includes(target) || (words.length && words.every(w => ind.includes(w))) || /\\bit services\\b|software|technology|digital|web development/.test(ind);\n  const s_ind = direct ? 100 : (/(tech|data|cloud|ai|automation)/.test(ind) ? 50 : 0);\n\n  // ICP size (20%): 100 matches target, 50 unknown, 0 enterprise or solo\n  const size = e.estimated_employee_range;\n  let s_icp;\n  if (cfg.company_size_range !== 'ALL' && size === cfg.company_size_range) s_icp = 100;\n  else if (size === 'UNKNOWN') s_icp = 50;\n  else if (size === '501+' || size === '1-10') s_icp = 0;\n  else s_icp = 50;\n\n  // Geography (15%): 100 HQ in target, 50 regional office, 0 foreign\n  const geo = lc(cfg.target_geography);\n  const hq = lc(e.headquarters_location);\n  const indiaWords = /india|gujarat|maharashtra|pune|mumbai|bengaluru|bangalore|delhi|hyderabad|chennai|ahmedabad|punjab/;\n  let s_geo;\n  if (!hq) s_geo = 50;\n  else if (hq.includes(geo) || (geo === 'india' && indiaWords.test(hq))) s_geo = 100;\n  else if (indiaWords.test(hq)) s_geo = 50;\n  else s_geo = 0;\n\n  // Decision maker (15%): 100 supported senior, 50 supported other, 0 none or unsupported\n  let s_role = 0;\n  if (e.decision_maker_supported) s_role = SENIOR.test(dm.designation || '') ? 100 : 50;\n\n  // Evidence (20%): 100 for 2 or more verified quotes, 50 for one, 0 for none\n  const n = e.evidence_count || 0;\n  const s_evid = n >= 2 ? 100 : (n === 1 ? 50 : 0);\n\n  const lead_score = Math.round(0.30 * s_ind + 0.20 * s_icp + 0.15 * s_geo + 0.15 * s_role + 0.20 * s_evid);\n  const routing_target = lead_score >= cfg.min_lead_score ? 'MASTER' : (lead_score >= 60 ? 'REVIEW' : 'QUARANTINE');\n\n  return { json: { ...e, lead_score, sub_scores: { industry: s_ind, icp: s_icp, geography: s_geo, role: s_role, evidence: s_evid }, routing_target } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2816,
+        -368
+      ],
+      "id": "6eb7c46a-038d-4f52-8052-264e31690918",
+      "name": "Scoring Engine"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.routing_target }}",
+                    "rightValue": "MASTER",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "6e99dc88-1e6b-436a-8561-887b8e7b78cb"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "765a2426-8ce9-4c9a-80a2-2884d34e9830",
+                    "leftValue": "={{ $json.routing_target }}",
+                    "rightValue": "REVIEW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "aab69f4f-fc99-4957-ac62-13a6623a1a00",
+                    "leftValue": "={{ $json.routing_target }}",
+                    "rightValue": "QUARANTINE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3024,
+        -384
+      ],
+      "id": "059f71af-c640-47a2-9c6c-95fa17f6127a",
+      "name": "Score Router"
     }
   ],
   "pinData": {
@@ -1420,6 +1518,28 @@
           }
         ]
       ]
+    },
+    "Validation Controller": {
+      "main": [
+        [
+          {
+            "node": "Scoring Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scoring Engine": {
+      "main": [
+        [
+          {
+            "node": "Score Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -1427,7 +1547,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "b4df1a7f-d271-4764-9620-586f1bea32e9",
+  "versionId": "07c909a3-6c67-4705-b21a-7fd87fddda4a",
   "meta": {
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
