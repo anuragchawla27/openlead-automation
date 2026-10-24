@@ -292,7 +292,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        976,
+        1008,
         -640
       ],
       "id": "c9ae2710-1e5d-454e-bf05-fc01837d6273",
@@ -667,7 +667,7 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        3232,
+        3440,
         -384
       ],
       "id": "059f71af-c640-47a2-9c6c-95fa17f6127a",
@@ -685,6 +685,608 @@
       ],
       "id": "e9a5bde7-ebe4-45ec-9bb0-fae826567fd2",
       "name": "Dedup Check"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0",
+          "mode": "list",
+          "cachedResultName": "OpenLead",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Stage_A_Raw_Research",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "result_id": "={{ $json.result_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "source_url": "={{ $json.source_url }}",
+            "normalized_domain": "={{ $json.normalized_domain }}",
+            "source_platform": "={{ $json.source_platform }}",
+            "title": "={{ $json.title }}",
+            "discovery_time": "={{ $json.discovery_time }}",
+            "scrape_status": "={{ $json.scrape_status }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "result_id",
+              "displayName": "result_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_url",
+              "displayName": "source_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "normalized_domain",
+              "displayName": "normalized_domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_platform",
+              "displayName": "source_platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "discovery_time",
+              "displayName": "discovery_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scrape_status",
+              "displayName": "scrape_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "http_status",
+              "displayName": "http_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1008,
+        -832
+      ],
+      "id": "523d5053-d892-45a4-9128-c4b632f772cb",
+      "name": "Write Raw",
+      "retryOnFail": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uT2jRGfeeKlSPV53",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date().toISOString();\nconst short = s => String(s || '').slice(0, 40);\nreturn $input.all().map(i => {\n  const e = i.json;\n  const dm = e.key_decision_maker || {};\n  const id = String(e.domain_hash || e.result_id || '').replace(/[^a-z0-9]/gi, '').slice(-10).toUpperCase();\n  return { json: {\n    ...e,\n    review_id: 'REV-' + id, rejection_id: 'REJ-' + id,\n    master_lead_id: 'MLD-' + id.slice(0, 4),\n    contact_name: dm.full_name || '', designation: dm.designation || '',\n    sub_scores_text: JSON.stringify(e.sub_scores || {}),\n    evidence_text: (e.extracted_evidence_snippets || []).join(' | '),\n    flags_text: (e.verification_flags || []).join(','),\n    reason_text: e.score_reason || e.rejection_reason || ('score ' + (e.lead_score ?? 0) + ' below 60'),\n    now\n  } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3232,
+        -368
+      ],
+      "id": "9ec96b28-4c57-4afa-b0d1-d33120f7f4e5",
+      "name": "Prepare Rows"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0",
+          "mode": "list",
+          "cachedResultName": "OpenLead",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 4344225,
+          "mode": "list",
+          "cachedResultName": "Stage_C_Master_Approved",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit#gid=4344225"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "normalized_domain": "={{ $('Prepare Rows').item.json.normalized_domain }}",
+            "master_lead_id": "={{ $('Prepare Rows').item.json.master_lead_id }}",
+            "contact_name": "={{ $('Prepare Rows').item.json.contact_name }}",
+            "company_name": "={{ $('Prepare Rows').item.json.company_name }}",
+            "designation": "={{ $('Prepare Rows').item.json.key_decision_maker.designation }}",
+            "verified_email": "={{ $('Prepare Rows').item.json.verified_email }}",
+            "email_status": "={{ $('Prepare Rows').item.json.email_status }}",
+            "lead_score": "={{ $('Prepare Rows').item.json.lead_score }}",
+            "evidence": "={{ $('Prepare Rows').item.json.evidence_text }}",
+            "campaign_id": "={{ $json.now }}",
+            "headquarters_location": "PENDING",
+            "human_approval": "PENDING",
+            "outreach_status": "NOT_SENT",
+            "created_at": "={{ $json.now }}"
+          },
+          "matchingColumns": [
+            "normalized_domain"
+          ],
+          "schema": [
+            {
+              "id": "master_lead_id",
+              "displayName": "master_lead_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "normalized_domain",
+              "displayName": "normalized_domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company_name",
+              "displayName": "company_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contact_name",
+              "displayName": "contact_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "designation",
+              "displayName": "designation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "verified_email",
+              "displayName": "verified_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email_status",
+              "displayName": "email_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_score",
+              "displayName": "lead_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "evidence",
+              "displayName": "evidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "headquarters_location",
+              "displayName": "headquarters_location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "human_approval",
+              "displayName": "human_approval",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_status",
+              "displayName": "outreach_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3760,
+        -576
+      ],
+      "id": "36070afe-a574-442d-9dde-e3093bc0dd16",
+      "name": "Write Master",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uT2jRGfeeKlSPV53",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0",
+          "mode": "list",
+          "cachedResultName": "OpenLead",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 541205245,
+          "mode": "list",
+          "cachedResultName": "Stage_B_Review_Queue",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit#gid=541205245"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "review_id": "={{ $json.review_id }}",
+            "result_id": "={{ $json.result_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "normalized_domain": "={{ $json.normalized_domain }}",
+            "company_name": "={{ $json.company_name }}",
+            "email_status": "={{ $json.email_status }}",
+            "lead_score": "={{ $json.lead_score }}",
+            "sub_scores": "={{ $json.sub_scores }}",
+            "verification_flags": "={{ $json.flags_text }}",
+            "validated_at": "={{ $json.now }}"
+          },
+          "matchingColumns": [
+            "review_id"
+          ],
+          "schema": [
+            {
+              "id": "review_id",
+              "displayName": "review_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "result_id",
+              "displayName": "result_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_name",
+              "displayName": "company_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "normalized_domain",
+              "displayName": "normalized_domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_score",
+              "displayName": "lead_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sub_scores",
+              "displayName": "sub_scores",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email_status",
+              "displayName": "email_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "verification_flags",
+              "displayName": "verification_flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "validated_at",
+              "displayName": "validated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3760,
+        -400
+      ],
+      "id": "903afa68-7975-48ed-bda8-9e3fbcd43dd8",
+      "name": "Write Review",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uT2jRGfeeKlSPV53",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0",
+          "mode": "list",
+          "cachedResultName": "OpenLead",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2032359505,
+          "mode": "list",
+          "cachedResultName": "Stage_B_Quarantine",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit#gid=2032359505"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "result_id": "={{ $json.result_id }}",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "normalized_domain": "={{ $json.normalized_domain }}",
+            "rejection_id": "={{ $json.rejection_id }}",
+            "reason": "={{ $json.reason_text }}",
+            "quarantined_at": "={{ $json.now }}",
+            "lead_score": "={{ $json.lead_score }}"
+          },
+          "matchingColumns": [
+            "rejection_id"
+          ],
+          "schema": [
+            {
+              "id": "rejection_id",
+              "displayName": "rejection_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "result_id",
+              "displayName": "result_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "normalized_domain",
+              "displayName": "normalized_domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_score",
+              "displayName": "lead_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quarantined_at",
+              "displayName": "quarantined_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3744,
+        -224
+      ],
+      "id": "4d08fe85-dbd3-42cb-8c31-69ba7b0334ca",
+      "name": "Write Quarantine",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uT2jRGfeeKlSPV53",
+          "name": "Google Sheets account 5"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "pinData": {
@@ -1412,6 +2014,11 @@
             "node": "Scrape Page",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Write Raw",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -1581,7 +2188,48 @@
       "main": [
         [
           {
+            "node": "Prepare Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Raw": {
+      "main": [
+        []
+      ]
+    },
+    "Prepare Rows": {
+      "main": [
+        [
+          {
             "node": "Score Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Router": {
+      "main": [
+        [
+          {
+            "node": "Write Master",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write Quarantine",
             "type": "main",
             "index": 0
           }
@@ -1594,8 +2242,9 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "8545f82c-e682-4bfb-a40c-51ec7d1c03d5",
+  "versionId": "4353fc2b-bbff-47f7-8bf6-658b433376e4",
   "meta": {
+    "templateCredsSetupCompleted": true,
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
   "id": "KuYvxaUX6vyL0HWh",
