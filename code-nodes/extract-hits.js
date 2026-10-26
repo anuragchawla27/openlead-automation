@@ -1,4 +1,4 @@
-const BLOCK = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com','youtube.com','wikipedia.org','glassdoor.com','indeed.com','naukri.com','justdial.com','ambitionbox.com','crunchbase.com','scribd.com','goodfirms.co','builtinpune.in','clutch.co','sulekha.com','indiamart.com','quora.com','medium.com','reddit.com','trustpilot.com','g2.com','topdevelopers.co','designrush.com','softwaresuggest.com','techbehemoths.com'];
+const BLOCK = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com','youtube.com','wikipedia.org','glassdoor.com','indeed.com','naukri.com','justdial.com','ambitionbox.com','crunchbase.com','scribd.com','goodfirms.co','builtinpune.in','clutch.co','sulekha.com','indiamart.com','quora.com','medium.com','reddit.com','trustpilot.com','g2.com','topdevelopers.co','designrush.com','softwaresuggest.com','techbehemoths.com','startupintros.com'];
 const LIST_TITLE = /\b(list of|reviews?|directory)\b|\bcompanies\b|\b(top|best)\s+\d+/i;
 const cfg = $('Split Queries').first().json;
 const hash = s => { let h = 5381; for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };

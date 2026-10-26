@@ -35,3 +35,4 @@ Dedup key is a hash of the normalized domain (www and common subdomains stripped
 - Four-tab Google Sheet. Every write is Append or Update Row, matching on a stable key (result_id, review_id, rejection_id, normalized_domain), so reruns never duplicate rows.
 - Stage A is an append-only discovery log written from a side branch after Extract Hits.
 - human_approval defaults to PENDING and is only changed by hand.
+The PDF’s B2B dork returned mostly large firms and directories, and an over-constrained version returned zero results. Queries now use the geography only, plus founder and about-page cues, and were checked in the browser before spending credits.
