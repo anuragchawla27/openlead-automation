@@ -40,7 +40,7 @@
       "typeVersion": 4.4,
       "position": [
         -240,
-        -544
+        -528
       ],
       "id": "622d01c4-3aea-4058-bca1-372825b086ae",
       "name": "Parse Prompt (Groq)",
@@ -256,8 +256,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        592,
-        -208
+        624,
+        -400
       ],
       "id": "dbc21c6b-f50d-483c-a24a-115cafdee8f0",
       "name": "Extract Reddit Hits"
@@ -307,7 +307,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1136,
+        1152,
         -640
       ],
       "id": "fcf707d5-8831-403d-98ce-6110d014d606",
@@ -320,20 +320,20 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        800,
-        -208
+        832,
+        -400
       ],
       "id": "c62fcddd-3d2e-448f-9776-1ae02f8bed54",
       "name": "Reddit Text From SERP"
     },
     {
       "parameters": {
-        "jsCode": "const KEY = /(founder|co-founder|ceo|cto|chief|director|managing|president|head of|owner|contact|email|e-mail|@|employees|team of|headquarter|head office|located|address|hq\\b|india)/i;\nreturn $input.all().map(i => {\n  const j = i.json;\n  if (j.scrape_status !== 'SCRAPED' && j.scrape_status !== 'SERP_ONLY') return i;\n  const lines = String(j.page_text || '').split('\\n').map(s => s.trim()).filter(Boolean);\n  let ctx;\n  if (j.scrape_status === 'SERP_ONLY') {\n    ctx = String(j.page_text || '').slice(0, 1500);\n  } else {\n    const head = [...new Set(lines.slice(0, 25))].join('\\n');\n    const tail = [...new Set(lines.slice(-30))].join('\\n');\n    const signal = [...new Set(lines.slice(25).filter(l => KEY.test(l) && l.length < 300))].slice(0, 30).join('\\n');\n    const body = (head + '\\n---\\n' + tail + '\\n---\\n' + signal).slice(0, 4000);\n    ctx = `SEARCH RESULT TITLE: ${j.title || ''}\\nSEARCH RESULT SNIPPET: ${j.snippet || ''}\\n---\\n` + body;\n  }\n  return { json: { ...j, llm_context: ctx, llm_context_chars: ctx.length } };\n});"
+        "jsCode": "const ROLE = /\\b(founder|co-founder|cofounder|ceo|cto|coo|managing director|director|owner|proprietor|president|chairman|founded (?:in \\d{4} )?by|led by|headed by)\\b/i;\nconst FACT = /(@|headquarter|head office|\\bhq\\b|employees|team of|\\d+\\+?\\s*(?:employees|professionals|engineers|people)|incorporated|registered office)/i;\n// \"Name - Job title\" attribution lines are client testimonials, not company leadership\nconst TESTIMONIAL = /^[^.!?]{2,40}\\s[-–—]\\s[A-Z][^!?]{2,70}$/;\nconst MARK = '--- ABOUT PAGE ---';\nconst MAX_CHARS = 4500; // NFR-04 budget (about 2,000 input tokens with prompt and schema)\n\nconst uniq = arr => [...new Set(arr)];\nconst clean = t => String(t || '').split('\\n').map(s => s.trim()).filter(Boolean);\nconst take = (lines, maxChars) => {\n  const out = []; let n = 0;\n  for (const l of lines) { if (n + l.length + 1 > maxChars) break; out.push(l); n += l.length + 1; }\n  return out.join('\\n');\n};\nconst pri = l => (/@/.test(l) ? 2 : 0) + (ROLE.test(l) ? 2 : 0) + (/headquarter|head office|\\bhq\\b/i.test(l) ? 1 : 0);\n\nreturn $input.all().map(i => {\n  const j = i.json;\n  if (j.scrape_status !== 'SCRAPED' && j.scrape_status !== 'SERP_ONLY') return i;\n\n  let ctx;\n  if (j.scrape_status === 'SERP_ONLY') {\n    ctx = String(j.page_text || '').slice(0, 1500);\n  } else {\n    const full = String(j.page_text || '');\n    const idx = full.indexOf(MARK);\n    const mainLines = clean(idx >= 0 ? full.slice(0, idx) : full);\n    const aboutLines = clean(idx >= 0 ? full.slice(idx + MARK.length) : '');\n    const seen = new Set();\n    const fresh = arr => arr.filter(l => !seen.has(l) && seen.add(l));\n\n    // 1) signals first, so the budget can never cut them off\n    const candidates = uniq([...mainLines, ...aboutLines]).filter(l =>\n      l.length <= 600 && (ROLE.test(l) || FACT.test(l)) && !TESTIMONIAL.test(l) && !(l.length < 25 && !/@/.test(l))\n    );\n    const signal = take(fresh(candidates.sort((a, b) => pri(b) - pri(a)).slice(0, 25)), 1800);\n    // 2) start of the main page\n    const head = take(fresh(uniq(mainLines.slice(0, 15))), 500);\n    // 3) About page: substantive lines only\n    const about = take(fresh(aboutLines.filter(l => l.length >= 40 && !TESTIMONIAL.test(l))), 900);\n    // 4) real footer of the main page (addresses, HQ labels)\n    const footer = take(fresh(uniq(mainLines.slice(-15))), 500);\n\n    const body = ['SIGNAL LINES:\\n' + signal, 'PAGE START:\\n' + head, 'ABOUT PAGE:\\n' + about, 'PAGE FOOTER:\\n' + footer].join('\\n---\\n');\n    ctx = `SEARCH RESULT TITLE: ${j.title || ''}\\nSEARCH RESULT SNIPPET: ${j.snippet || ''}\\n---\\n` + body.slice(0, MAX_CHARS);\n  }\n  return { json: { ...j, llm_context: ctx, llm_context_chars: ctx.length } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1488,
+        2000,
         -640
       ],
       "id": "a32fef2b-134f-4545-b416-9cdd500b6348",
@@ -347,7 +347,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-120b\",\n  temperature: 0,\n  messages: [\n    { role: \"system\", content: \"You extract company facts from website text. Rules: 1) Use ONLY the provided text. 2) If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess. 3) Copy an email only if it appears character-for-character in the text; never construct one. 4) extracted_evidence_snippets: verbatim sentences copied exactly from the text supporting industry or role claims, max 3. 5) If the text is not a company website (error page, directory, parked domain), set extraction_successful=false. 6) estimated_employee_range and confidence_level must never be null. 7) headquarters_location: use only if the text says headquarters, head office, HQ, or (HQ) next to an address; a landing-page title like 'IT company in Pune' is not a headquarters. Otherwise null. 8) company_contact_email: a general company inbox (info@, contact@, business@, sales@) copied character-for-character from the text; null if none. Never put a generic inbox in public_business_email. 9) Output JSON only.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"lead_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"extraction_successful\",\"company_name\",\"official_website\",\"industry_sector\",\"headquarters_location\",\"company_description\",\"estimated_employee_range\",\"key_decision_maker\",\"extracted_evidence_snippets\",\"confidence_level\",\"company_contact_email\"],\n    properties: {\n      extraction_successful: { type: \"boolean\" },\n      company_name: { type: [\"string\",\"null\"] },\n      official_website: { type: [\"string\",\"null\"] },\n      industry_sector: { type: [\"string\",\"null\"] },\n      headquarters_location: { type: [\"string\",\"null\"] },\n      company_description: { type: [\"string\",\"null\"] },\n      estimated_employee_range: { type: \"string\", enum: [\"1-10\",\"11-50\",\"51-200\",\"201-500\",\"501+\",\"UNKNOWN\"] },\n      key_decision_maker: { type: \"object\", additionalProperties: false,\n        required: [\"full_name\",\"designation\",\"public_business_email\",\"linkedin_profile_url\"],\n        properties: { full_name: { type: [\"string\",\"null\"] }, designation: { type: [\"string\",\"null\"] }, public_business_email: { type: [\"string\",\"null\"] }, linkedin_profile_url: { type: [\"string\",\"null\"] } } },\n      extracted_evidence_snippets: { type: \"array\", items: { type: \"string\" } },\n      confidence_level: { type: \"string\", enum: [\"HIGH\",\"MEDIUM\",\"LOW\"] },\n      company_contact_email: { type: [\"string\",\"null\"] }\n    }\n  } } }\n} }}",
+        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-120b\",\n  temperature: 0,\n  messages: [\n    { role: \"system\", content: \"You extract company facts from website text. Rules: 1) Use ONLY the provided text. 2) If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess. 3) Copy an email only if it appears character-for-character in the text; never construct one. 4) extracted_evidence_snippets: verbatim sentences copied exactly from the text supporting industry or role claims, max 3. 5) If the text is not a company website (error page, directory, parked domain), set extraction_successful=false. 6) estimated_employee_range and confidence_level must never be null. 7) headquarters_location: use only if the text says headquarters, head office, HQ, or (HQ) next to an address; a landing-page title like 'IT company in Pune' is not a headquarters. Otherwise null. 8) company_contact_email: one general company inbox copied character-for-character from the text, on the company's own domain, that is not a named person's mailbox. Accept local parts such as info, contact, hello, sales, business, enquiry, inquiry, support, office, mail, admin, or the company's own brand name (for example gigante@gigante.co.in). If several exist, prefer info, contact, hello, business, then sales. Otherwise null. Never put a generic inbox in public_business_email. 9) key_decision_maker: if the text names a person as founder, co-founder, CEO, managing director, owner or director of THIS company (for example 'founded in 2010 by visionary CEO, Harshad Mane', 'led by the founder, Name', 'Name, CEO'), return full_name as written and designation using the role word exactly as written in the text. Never use names from testimonials, reviews, client quotes or 'Built for' audience lines, or people at other companies. If there is no such person, use null for all key_decision_maker fields. 10) Output JSON only.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"lead_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"extraction_successful\",\"company_name\",\"official_website\",\"industry_sector\",\"headquarters_location\",\"company_description\",\"estimated_employee_range\",\"key_decision_maker\",\"extracted_evidence_snippets\",\"confidence_level\",\"company_contact_email\"],\n    properties: {\n      extraction_successful: { type: \"boolean\" },\n      company_name: { type: [\"string\",\"null\"] },\n      official_website: { type: [\"string\",\"null\"] },\n      industry_sector: { type: [\"string\",\"null\"] },\n      headquarters_location: { type: [\"string\",\"null\"] },\n      company_description: { type: [\"string\",\"null\"] },\n      estimated_employee_range: { type: \"string\", enum: [\"1-10\",\"11-50\",\"51-200\",\"201-500\",\"501+\",\"UNKNOWN\"] },\n      key_decision_maker: { type: \"object\", additionalProperties: false,\n        required: [\"full_name\",\"designation\",\"public_business_email\",\"linkedin_profile_url\"],\n        properties: { full_name: { type: [\"string\",\"null\"] }, designation: { type: [\"string\",\"null\"] }, public_business_email: { type: [\"string\",\"null\"] }, linkedin_profile_url: { type: [\"string\",\"null\"] } } },\n      extracted_evidence_snippets: { type: \"array\", items: { type: \"string\" } },\n      confidence_level: { type: \"string\", enum: [\"HIGH\",\"MEDIUM\",\"LOW\"] },\n      company_contact_email: { type: [\"string\",\"null\"] }\n    }\n  } } }\n} }}",
         "options": {
           "batching": {
             "batch": {
@@ -360,7 +360,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1840,
+        2320,
         -640
       ],
       "id": "5305b5f5-4dd2-48da-b5c4-779c31ca2671",
@@ -387,7 +387,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2048,
+        2576,
         -640
       ],
       "id": "e481f1a8-bc0c-448b-b7b5-d4021747475b",
@@ -421,8 +421,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1680,
-        -432
+        2144,
+        -496
       ],
       "id": "240bc8da-bdc2-42e4-8a83-7661cdf28a34",
       "name": "Has Context?"
@@ -434,7 +434,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1312,
+        1344,
         -640
       ],
       "id": "e762661e-766d-4030-8f35-b9f7693cb0e2",
@@ -468,7 +468,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2224,
+        2848,
         -640
       ],
       "id": "33765ef3-0fd4-4153-b113-07ad1f31619b",
@@ -482,7 +482,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-20b\",\n  temperature: 0,\n  messages: [\n    { role: \"system\", content: \"You extract company facts from website text. Rules: 1) Use ONLY the provided text. 2) If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess. 3) Copy an email only if it appears character-for-character in the text; never construct one. 4) extracted_evidence_snippets: verbatim sentences copied exactly from the text supporting industry or role claims, max 3. 5) If the text is not a company website (error page, directory, parked domain), set extraction_successful=false. 6) estimated_employee_range and confidence_level must never be null. 7) headquarters_location: use only if the text says headquarters, head office, HQ, or (HQ) next to an address; a landing-page title like 'IT company in Pune' is not a headquarters. Otherwise null. 8) company_contact_email: a general company inbox (info@, contact@, business@, sales@) copied character-for-character from the text; null if none. Never put a generic inbox in public_business_email. 9) Output JSON only.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"lead_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"extraction_successful\",\"company_name\",\"official_website\",\"industry_sector\",\"headquarters_location\",\"company_description\",\"estimated_employee_range\",\"key_decision_maker\",\"extracted_evidence_snippets\",\"confidence_level\",\"company_contact_email\"],\n    properties: {\n      extraction_successful: { type: \"boolean\" },\n      company_name: { type: [\"string\",\"null\"] },\n      official_website: { type: [\"string\",\"null\"] },\n      industry_sector: { type: [\"string\",\"null\"] },\n      headquarters_location: { type: [\"string\",\"null\"] },\n      company_description: { type: [\"string\",\"null\"] },\n      estimated_employee_range: { type: \"string\", enum: [\"1-10\",\"11-50\",\"51-200\",\"201-500\",\"501+\",\"UNKNOWN\"] },\n      key_decision_maker: { type: \"object\", additionalProperties: false,\n        required: [\"full_name\",\"designation\",\"public_business_email\",\"linkedin_profile_url\"],\n        properties: { full_name: { type: [\"string\",\"null\"] }, designation: { type: [\"string\",\"null\"] }, public_business_email: { type: [\"string\",\"null\"] }, linkedin_profile_url: { type: [\"string\",\"null\"] } } },\n      extracted_evidence_snippets: { type: \"array\", items: { type: \"string\" } },\n      confidence_level: { type: \"string\", enum: [\"HIGH\",\"MEDIUM\",\"LOW\"] },\n      company_contact_email: { type: [\"string\",\"null\"] }\n    }\n  } } }\n} }}",
+        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-20b\",\n  temperature: 0,\n  messages: [\n    { role: \"system\", content: \"You extract company facts from website text. Rules: 1) Use ONLY the provided text. 2) If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess. 3) Copy an email only if it appears character-for-character in the text; never construct one. 4) extracted_evidence_snippets: verbatim sentences copied exactly from the text supporting industry or role claims, max 3. 5) If the text is not a company website (error page, directory, parked domain), set extraction_successful=false. 6) estimated_employee_range and confidence_level must never be null. 7) headquarters_location: use only if the text says headquarters, head office, HQ, or (HQ) next to an address; a landing-page title like 'IT company in Pune' is not a headquarters. Otherwise null. 8) company_contact_email: one general company inbox copied character-for-character from the text, on the company's own domain, that is not a named person's mailbox. Accept local parts such as info, contact, hello, sales, business, enquiry, inquiry, support, office, mail, admin, or the company's own brand name (for example gigante@gigante.co.in). If several exist, prefer info, contact, hello, business, then sales. Otherwise null. Never put a generic inbox in public_business_email. 9) key_decision_maker: if the text names a person as founder, co-founder, CEO, managing director, owner or director of THIS company (for example 'founded in 2010 by visionary CEO, Harshad Mane', 'led by the founder, Name', 'Name, CEO'), return full_name as written and designation using the role word exactly as written in the text. Never use names from testimonials, reviews, client quotes or 'Built for' audience lines, or people at other companies. If there is no such person, use null for all key_decision_maker fields. 10) Output JSON only.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"lead_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"extraction_successful\",\"company_name\",\"official_website\",\"industry_sector\",\"headquarters_location\",\"company_description\",\"estimated_employee_range\",\"key_decision_maker\",\"extracted_evidence_snippets\",\"confidence_level\",\"company_contact_email\"],\n    properties: {\n      extraction_successful: { type: \"boolean\" },\n      company_name: { type: [\"string\",\"null\"] },\n      official_website: { type: [\"string\",\"null\"] },\n      industry_sector: { type: [\"string\",\"null\"] },\n      headquarters_location: { type: [\"string\",\"null\"] },\n      company_description: { type: [\"string\",\"null\"] },\n      estimated_employee_range: { type: \"string\", enum: [\"1-10\",\"11-50\",\"51-200\",\"201-500\",\"501+\",\"UNKNOWN\"] },\n      key_decision_maker: { type: \"object\", additionalProperties: false,\n        required: [\"full_name\",\"designation\",\"public_business_email\",\"linkedin_profile_url\"],\n        properties: { full_name: { type: [\"string\",\"null\"] }, designation: { type: [\"string\",\"null\"] }, public_business_email: { type: [\"string\",\"null\"] }, linkedin_profile_url: { type: [\"string\",\"null\"] } } },\n      extracted_evidence_snippets: { type: \"array\", items: { type: \"string\" } },\n      confidence_level: { type: \"string\", enum: [\"HIGH\",\"MEDIUM\",\"LOW\"] },\n      company_contact_email: { type: [\"string\",\"null\"] }\n    }\n  } } }\n} }}",
         "options": {
           "batching": {
             "batch": {
@@ -495,7 +495,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        2368,
+        2992,
         -864
       ],
       "id": "d6d0375a-d4b6-43c0-b2a5-279984f37216",
@@ -522,7 +522,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2544,
+        3168,
         -864
       ],
       "id": "73cb5b78-f2aa-4d18-8b30-44266eb9aabd",
@@ -533,7 +533,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        2576,
+        3200,
         -608
       ],
       "id": "fa7ba235-9cfc-4b1c-8c61-9abc8322f7b8",
@@ -541,12 +541,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst FREE = ['gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com','proton.me','protonmail.com','icloud.com','rediffmail.com'];\nconst GENERIC = /^(info|contact|business|sales|support|hello|admin|office|enquiry|inquiry|finance|hr|careers|jobs|whistleblower|marketing|accounts|billing|help|team|mail|webmaster)([._+-]|@)/i;\nconst RFC = /^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;\nconst hostOf = u => { const m = String(u || '').match(/^(?:https?:\\/\\/)?([^\\/?#:]+)/i); return m ? m[1].toLowerCase().replace(/^www\\./, '') : ''; };\n\nreturn $input.all().map(item => {\n  const e = item.json;\n  const errors = [];\n  const out = { ...e };\n\n  // 1. Structural gate (fallback-model items are gated on company_name)\n  const usable = e.extraction_status === 'EXTRACTED' && !!e.company_name && (e.extraction_successful || e.model_used);\n  if (!usable) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: e.extraction_status === 'EXTRACTED' ? 'ERR_EMPTY_EXTRACTION' : 'ERR_NOT_EXTRACTED', rejection_veto: true } };\n  }\n\n  // 2. Domain from the scraped URL (never from the model)\n  const domain = hostOf(e.source_url) || e.normalized_domain || '';\n  if (!domain || !/\\.[a-z]{2,}$/i.test(domain)) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'ERR_MALFORMED_URL', rejection_veto: true } };\n  }\n  out.normalized_domain = domain;\n\n  // 3. Exclusion veto\n  const hay = ((e.company_name || '') + ' ' + (e.company_description || '') + ' ' + (e.industry_sector || '')).toLowerCase();\n  const hit = (cfg.exclusion_keywords || []).find(x => x && hay.includes(String(x).toLowerCase()));\n  if (hit) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'VETO_EXCLUSION: ' + hit, rejection_veto: true } };\n  }\n\n  // 4. Email classification (decision maker first, then company inbox)\n  const dm = e.key_decision_maker || {};\n  const rawEmail = (dm.public_business_email || e.company_contact_email || '').trim();\n  let verified_email = null, email_status = 'UNAVAILABLE';\n  if (rawEmail) {\n    if (!RFC.test(rawEmail) || /\\.\\./.test(rawEmail)) { email_status = 'INVALID_SYNTAX'; }\n    else {\n      verified_email = rawEmail;\n      const edomain = rawEmail.split('@')[1].toLowerCase();\n      if (FREE.includes(edomain)) email_status = 'FREE_WEBMAIL';\n      else if (GENERIC.test(rawEmail)) email_status = 'GENERIC_INBOX';\n      else email_status = 'SYNTAX_VALID';\n      if (!/(^|\\.)/.test(edomain) || (edomain !== domain && !edomain.endsWith('.' + domain) && !domain.endsWith('.' + edomain))) {\n        if (email_status === 'SYNTAX_VALID') email_status = 'DOMAIN_MISMATCH';\n      }\n    }\n  }\n\n  // 5. Decision maker counts only when a verbatim quote supports the designation\n  const quotes = (e.extracted_evidence_snippets || []).join(' ').toLowerCase();\n  const desig = String(dm.designation || '').toLowerCase();\n  const dm_supported = !!(dm.full_name && desig && quotes.includes(String(dm.full_name).toLowerCase()) && quotes.includes(desig));\n\n  return { json: {\n    ...out,\n    validation_status: 'VALIDATED',\n    verified_email, email_status,\n    decision_maker_supported: dm_supported,\n    evidence_count: (e.extracted_evidence_snippets || []).length,\n    validation_errors: errors,\n    validated_at: new Date().toISOString()\n  } };\n});"
+        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst FREE = ['gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com','proton.me','protonmail.com','icloud.com','rediffmail.com'];\nconst GENERIC = /^(info|contact|contacts|business|sales|support|hello|hi|admin|office|enquiry|enquiries|inquiry|inquiries|finance|hr|careers|jobs|whistleblower|marketing|accounts|billing|help|team|mail|webmaster)([._+-]|@)/i;\nconst RFC = /^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;\nconst hostOf = u => { const m = String(u || '').match(/^(?:https?:\\/\\/)?([^\\/?#:]+)/i); return m ? m[1].toLowerCase().replace(/^www\\./, '') : ''; };\n\n// brand label: awrange.com and awrange.co.in both -> \"awrange\"\nconst SLD = new Set(['co', 'com', 'org', 'net', 'ac', 'gov', 'edu']);\nconst brandOf = d => {\n  const p = String(d || '').toLowerCase().split('.');\n  if (p.length > 1) p.pop();\n  if (p.length > 1 && SLD.has(p[p.length - 1])) p.pop();\n  return p[p.length - 1] || '';\n};\n\n// role word variants, so \"Founder\" is supported by \"founded ... by\"\nconst ROLE_PATTERNS = [\n  [/found/i, /found(?:er|ed|ing)/i],\n  [/ceo|chief executive/i, /\\bceo\\b|chief executive/i],\n  [/cto|chief technology/i, /\\bcto\\b|chief technology/i],\n  [/coo|chief operating/i, /\\bcoo\\b|chief operating/i],\n  [/managing director|\\bmd\\b/i, /managing director|\\bmd\\b/i],\n  [/director/i, /director/i],\n  [/owner|proprietor/i, /owner|proprietor/i],\n  [/president/i, /president/i],\n  [/partner/i, /partner/i]\n];\nconst esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst roleRegexFor = desig => {\n  const hit = ROLE_PATTERNS.find(([k]) => k.test(desig));\n  if (hit) return hit[1];\n  return desig ? new RegExp(esc(desig), 'i') : null;\n};\nconst normText = s => String(s || '').replace(/[ \\t\\r\\f\\v]+/g, ' ');\n\n// name must appear verbatim in the page, with the role within 150 chars,\n// and not as a \"Name - Title\" testimonial attribution line\nconst supportedBy = (name, desig, text) => {\n  const hay = normText(text), lower = hay.toLowerCase();\n  const n = normText(name).trim().toLowerCase();\n  const re = roleRegexFor(String(desig || '').toLowerCase());\n  if (!n || !re) return false;\n  const testimonial = new RegExp('^\\\\s*' + esc(n) + '\\\\s*[-–—]\\\\s*', 'i');\n  let from = 0;\n  for (;;) {\n    const idx = lower.indexOf(n, from);\n    if (idx === -1) return false;\n    const ls = hay.lastIndexOf('\\n', idx) + 1;\n    let le = hay.indexOf('\\n', idx); if (le === -1) le = hay.length;\n    const line = hay.slice(ls, le);\n    const win = hay.slice(Math.max(0, idx - 150), idx + n.length + 150);\n    if (!testimonial.test(line) && re.test(win)) return true;\n    from = idx + n.length;\n  }\n};\n\nreturn $input.all().map(item => {\n  const e = item.json;\n  const errors = [];\n  const out = { ...e };\n  const flags = [...(e.verification_flags || [])];\n  let confidence = e.confidence_level;\n\n  // 1. Structural gate (fallback-model items are gated on company_name)\n  const usable = e.extraction_status === 'EXTRACTED' && !!e.company_name && (e.extraction_successful || e.model_used);\n  if (!usable) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: e.extraction_status === 'EXTRACTED' ? 'ERR_EMPTY_EXTRACTION' : 'ERR_NOT_EXTRACTED', rejection_veto: true } };\n  }\n\n  // 2. Domain from the scraped URL (never from the model)\n  const domain = hostOf(e.source_url) || e.normalized_domain || '';\n  if (!domain || !/\\.[a-z]{2,}$/i.test(domain)) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'ERR_MALFORMED_URL', rejection_veto: true } };\n  }\n  out.normalized_domain = domain;\n\n  // 3. Exclusion veto\n  const hay = ((e.company_name || '') + ' ' + (e.company_description || '') + ' ' + (e.industry_sector || '')).toLowerCase();\n  const hit = (cfg.exclusion_keywords || []).find(x => x && hay.includes(String(x).toLowerCase()));\n  if (hit) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'VETO_EXCLUSION: ' + hit, rejection_veto: true } };\n  }\n\n  // 4. Email classification (decision maker first, then company inbox)\n  const dm = e.key_decision_maker || {};\n  const dmEmail = (dm.public_business_email || '').trim();\n  const coEmail = (e.company_contact_email || '').trim();\n  const rawEmail = dmEmail || coEmail;\n  let fromCompany = !dmEmail && !!coEmail;\n  let verified_email = null, email_status = 'UNAVAILABLE';\n  if (rawEmail) {\n    if (!RFC.test(rawEmail) || /\\.\\./.test(rawEmail)) { email_status = 'INVALID_SYNTAX'; }\n    else {\n      verified_email = rawEmail;\n      const edomain = rawEmail.split('@')[1].toLowerCase();\n      if (FREE.includes(edomain)) email_status = 'FREE_WEBMAIL';\n      else if (GENERIC.test(rawEmail)) email_status = 'GENERIC_INBOX';\n      else email_status = 'SYNTAX_VALID';\n      if (email_status === 'SYNTAX_VALID' && brandOf(edomain) !== brandOf(domain)) email_status = 'DOMAIN_MISMATCH';\n\n      // a general inbox the model put in the decision-maker field is still a company inbox\n      const sameAsCompany = !!dmEmail && !!coEmail && dmEmail.toLowerCase() === coEmail.toLowerCase();\n      if (dmEmail && (email_status === 'GENERIC_INBOX' || sameAsCompany)) {\n        fromCompany = true;\n        flags.push('DM_EMAIL_WAS_COMPANY_INBOX');\n        if (confidence === 'HIGH') confidence = 'MEDIUM';\n      }\n      // an address reported as the company's general inbox is not a personal email\n      if (email_status === 'SYNTAX_VALID' && fromCompany) email_status = 'GENERIC_INBOX';\n    }\n  }\n\n  // 5. Decision maker counts only when the name appears verbatim next to the role in the page text\n  const evidenceText = [e.llm_context, e.page_text, (e.extracted_evidence_snippets || []).join('\\n')].join('\\n');\n  const dm_supported = !!(dm.full_name && dm.designation && supportedBy(dm.full_name, dm.designation, evidenceText));\n\n  return { json: {\n    ...out,\n    validation_status: 'VALIDATED',\n    verified_email, email_status,\n    email_source: rawEmail ? (fromCompany ? 'COMPANY_INBOX' : 'DECISION_MAKER') : null,\n    decision_maker_supported: dm_supported,\n    evidence_count: (e.extracted_evidence_snippets || []).length,\n    verification_flags: flags,\n    confidence_level: confidence,\n    validation_errors: errors,\n    validated_at: new Date().toISOString()\n  } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2816,
+        3440,
         -592
       ],
       "id": "f6572d65-68a0-40f0-87fd-2c58f5aa4e10",
@@ -559,7 +559,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2816,
+        3440,
         -368
       ],
       "id": "6eb7c46a-038d-4f52-8052-264e31690918",
@@ -667,7 +667,7 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        3440,
+        4064,
         -384
       ],
       "id": "059f71af-c640-47a2-9c6c-95fa17f6127a",
@@ -680,7 +680,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3024,
+        3648,
         -368
       ],
       "id": "e9a5bde7-ebe4-45ec-9bb0-fae826567fd2",
@@ -823,12 +823,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const now = new Date().toISOString();\nconst short = s => String(s || '').slice(0, 40);\nreturn $input.all().map(i => {\n  const e = i.json;\n  const dm = e.key_decision_maker || {};\n  const id = String(e.domain_hash || e.result_id || '').replace(/[^a-z0-9]/gi, '').slice(-10).toUpperCase();\n  return { json: {\n    ...e,\n    review_id: 'REV-' + id, rejection_id: 'REJ-' + id,\n    master_lead_id: 'MLD-' + id.slice(0, 4),\n    contact_name: dm.full_name || '', designation: dm.designation || '',\n    sub_scores_text: JSON.stringify(e.sub_scores || {}),\n    evidence_text: (e.extracted_evidence_snippets || []).join(' | '),\n    flags_text: (e.verification_flags || []).join(','),\n    reason_text: e.score_reason || e.rejection_reason || ('score ' + (e.lead_score ?? 0) + ' below 60'),\n    now\n  } };\n});"
+        "jsCode": "const now = new Date().toISOString();\nreturn $input.all().map(i => {\n  const e = i.json;\n  const dm = e.key_decision_maker || {};\n  const id = String(e.domain_hash || e.result_id || '').replace(/[^a-z0-9]/gi, '').slice(-10).toUpperCase();\n  const score = e.lead_score ?? 0;\n  const route = e.routing_target || '';\n  const routeReason =\n    route === 'MASTER' ? 'score ' + score + ' meets the master threshold' :\n    route === 'REVIEW' ? 'score ' + score + ' in review band (60-79): needs human check' :\n    'score ' + score + ' below 60';\n  return { json: {\n    ...e,\n    review_id: 'REV-' + id, rejection_id: 'REJ-' + id,\n    master_lead_id: 'MLD-' + id,\n    contact_name: dm.full_name || '', designation: dm.designation || '',\n    sub_scores_text: JSON.stringify(e.sub_scores || {}),\n    evidence_text: (e.extracted_evidence_snippets || []).join(' | '),\n    flags_text: (e.verification_flags || []).join(','),\n    reason_text: e.score_reason || e.rejection_reason || routeReason,\n    now\n  } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3232,
+        3856,
         -368
       ],
       "id": "9ec96b28-4c57-4afa-b0d1-d33120f7f4e5",
@@ -863,8 +863,8 @@
             "email_status": "={{ $('Prepare Rows').item.json.email_status }}",
             "lead_score": "={{ $('Prepare Rows').item.json.lead_score }}",
             "evidence": "={{ $('Prepare Rows').item.json.evidence_text }}",
-            "campaign_id": "={{ $json.now }}",
-            "headquarters_location": "PENDING",
+            "campaign_id": "={{ $json.campaign_id }}",
+            "headquarters_location": "={{ $json.headquarters_location }}",
             "human_approval": "PENDING",
             "outreach_status": "NOT_SENT",
             "created_at": "={{ $json.now }}"
@@ -1009,7 +1009,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        3760,
+        4384,
         -576
       ],
       "id": "36070afe-a574-442d-9dde-e3093bc0dd16",
@@ -1157,7 +1157,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        3760,
+        4384,
         -400
       ],
       "id": "903afa68-7975-48ed-bda8-9e3fbcd43dd8",
@@ -1275,7 +1275,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        3744,
+        4368,
         -224
       ],
       "id": "4d08fe85-dbd3-42cb-8c31-69ba7b0334ca",
@@ -1287,225 +1287,73 @@
         }
       },
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(i => {\n  const j = i.json;\n  const m = String(j.source_url || '').match(/^(https?:\\/\\/[^\\/?#]+)(\\/[^?#]*)?/i);\n  const origin = m ? m[1] : '';\n  const path = m && m[2] ? m[2].toLowerCase() : '';\n  const isAboutLike = /about|team|founder|leadership|contact/.test(path);\n  // Respect blocks: never re-hit a site that already failed or was blocked.\n  // Already an about/contact page: no second fetch needed.\n  const eligible = origin && j.scrape_status === 'SCRAPED' && !isAboutLike;\n  const about_url = eligible ? origin + '/about' : '';\n  return { json: { ...j, about_url } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        -640
+      ],
+      "id": "cf08e427-ce05-4dc5-ad94-b07050b4b096",
+      "name": "Add About URL"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.about_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "text/html"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1680,
+        -640
+      ],
+      "id": "a0be7239-db51-4be9-bf30-03a814580127",
+      "name": "Scrape About",
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Add About URL').all();\nconst NAMED = { nbsp:' ', amp:'&', lt:'<', gt:'>', quot:'\"', apos:\"'\" };\nconst decode = s => s.replace(/&#x([0-9a-f]+);/gi,(m,h)=>String.fromCharCode(parseInt(h,16))).replace(/&#(\\d+);/g,(m,d)=>String.fromCharCode(+d)).replace(/&([a-z]+);/gi,(m,n)=>NAMED[n.toLowerCase()]??m);\nconst ROLE = /\\b(founder|co-founder|ceo|cto|coo|director|managing|owner|partner|president|head of)\\b/i;\n\nreturn $input.all().map((item, i) => {\n  const j = base[i] ? base[i].json : {};\n  if (!j.about_url) return { json: { ...j, about_status: 'ABOUT_SKIPPED' } };\n  const status = item.json.statusCode || item.json.status || null;\n  const body = typeof item.json.body === 'string' ? item.json.body : (typeof item.json.data === 'string' ? item.json.data : '');\n  if (!body || (status && status >= 400)) return { json: { ...j, about_status: 'ABOUT_SKIPPED' } };\n\n  let t = body.replace(/<(script|style|noscript|svg|iframe|nav|header|footer)[\\s\\S]*?<\\/\\1>/gi,' ').replace(/<!--[\\s\\S]*?-->/g,' ').replace(/<(br|\\/p|\\/div|\\/li|\\/h[1-6])\\s*\\/?>/gi,'\\n').replace(/<[^>]+>/g,' ');\n  t = decode(t).replace(/[ \\t\\r\\f\\v]+/g,' ').replace(/\\s*\\n\\s*/g,'\\n').replace(/\\n{2,}/g,'\\n').trim();\n\n  // keep only lines not already on the main page, and only substantive ones\n  const seen = new Set(String(j.page_text || '').split('\\n').map(s => s.trim()));\n  const fresh = t.split('\\n').map(s => s.trim())\n    .filter(l => l && !seen.has(l) && (l.length >= 40 || l.includes('@') || ROLE.test(l)))\n    .join('\\n');\n\n  if (fresh.length < 100) return { json: { ...j, about_status: 'ABOUT_DUPLICATE_OR_EMPTY' } };\n  return { json: { ...j, page_text: String(j.page_text || '') + '\\n--- ABOUT PAGE ---\\n' + fresh.slice(0, 3000), about_status: 'ABOUT_ADDED' } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        -640
+      ],
+      "id": "59efb20a-0c9a-412d-8d8e-cf54718ee9b8",
+      "name": "Merge About"
     }
   ],
   "pinData": {
-    "Clean Page Text": [
-      {
-        "json": {
-          "result_id": "RES-r8etpn",
-          "campaign_id": "CMP-2026-8QF3",
-          "source_url": "https://synoptek.com/location/pune/",
-          "normalized_domain": "synoptek.com",
-          "source_platform": "google_serp",
-          "title": "Managed IT Services Pune | Cloud, AI & Cybersecurity",
-          "snippet": "Synoptek delivers Managed IT Services in Pune for software, manufacturing, life sciences, and financial services businesses. AI, cybersecurity, ERP, cloud, ...",
-          "query": "\"IT Services\" (\"IT services\" OR \"software company\") \"Pune\" -site:linkedin.com/jobs",
-          "discovery_time": "2026-10-16T12:00:23.890Z",
-          "scrape_status": "SCRAPE_FAILED",
-          "http_status": 403,
-          "scrape_error": "HTTP 403",
-          "page_text": ""
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      },
-      {
-        "json": {
-          "result_id": "RES-1jelwdt",
-          "campaign_id": "CMP-2026-8QF3",
-          "source_url": "https://www.cybage.com/",
-          "normalized_domain": "cybage.com",
-          "source_platform": "google_serp",
-          "title": "Cybage: Digital Product Engineering and Outsourced IT ...",
-          "snippet": "Cybage Software Pvt. Ltd. ... 6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014. Ph: +91-20-66041700.",
-          "query": "\"IT Services\" (\"IT services\" OR \"software company\") \"Pune\" -site:linkedin.com/jobs",
-          "discovery_time": "2026-10-16T12:00:23.891Z",
-          "scrape_status": "SCRAPED",
-          "http_status": 200,
-          "page_text": "Digital Product Engineering and Outsourced IT Services | Technology Consulting: Cybage\nSkip to main content\nMobile Main navigation\nServices\nDigital Product Engineering\nConcept & Ideation\nResearch, Design & Development\nTest Engineering\nSustained Engineering\nSupport & Reliability\nDocumentation and Training\nMigration\nRe-Engineering\nTechnology Solutions\nArchitectural Services\nBig Data\nBusiness Intelligence\nCloud\nRobotic Process Automation (RPA)\nALM & DevOps\nMobility\nArtificial Intelligence\nGenerative AI\nData Analytics and AI/ML Solutions\nPlatform & Integrations\nCustomer Relationship Management (CRM)\nEnterprise Content Management (ECM)\nEnterprise Mobility\nServiceNow\nDigital Transformation\nConsulting & Strategy\nContent Writing\nCreative Services\nDigital Marketing\nUI/UX Services\nSupport Services\nITeS & BPO Services\nTechnical and Application Support\nRemote Infrastructure Management (RIM)\nGCC as a Service\nWhy Choose GCCaaS?\nProcess\nOur Solutions\nDifferentiators\nPE Consulting Services\nOur Offerings\nPE Solutions\nEngagement & Partnership Models\nIndustries\nMedia & Advertising\nAdTech\nAdvertising & Marketing\nEntertainment Production\nPublishing\nVideo Streaming & OTT\nSoftware & Hi-Tech\nGreenfield Development\nExperience Modernization\nTechnology Transformation\nPlatform Consolidation\nTravel & Hospitality\nAirlines\nCar Rentals\nDistribution\nHospitality\nEvents and Meetings\nRetail\nRetail Transformation\nIntegrated Commerce Enablement\nTechNovative Solutions\nRetail Product Engineering\nSupply Chain & Logistics\nFleet Management System (FMS)\nWarehouse Management System (WMS)\n3PL Logistics Solutions\nManufacturing\nTransportation Management System (TMS)\nHealthcare & Life Sciences\nAdministrative services\nClinical Workflows\nConnected Care\nDigital Health\nDigital Therapeutics\nHealthcare data engineering\nHealthcare managed services\nInteroperability\nLifesciences\nFinTech\nEnterprise Fintech Solutions\nLending & Finance\nPayment Tech\nWealth & Crypto\nDifferentiators\nExcelShore®\nWhat is ExcelShore®?\nYour Data Driven Partner\nProduct Intensive Engineering (PIE)\nIntroduction to PIE\nOptimizing the Value Chain\nAbout Us\nCompany Overview\nLeadership Team\nDiversity & Inclusion\nOur Partners\nResponsible Business\nCybage Foundation\nCorporate Governance\nSustainability\nAwards and Recognitions\nAnalyst Recognition\nCommunity Impact Awards\nIndustry Excellence Awards\nNewsroom\nPress Release\nCybage in News\nResource Center\nBlogs\nWhite Papers\nSuccess Stories\nCybage Times\nCareers\nOpen Positions\nExplore Opportunities\nWhy Join Cybage\nKey Highlights\nWhy Work With Us\nBenefits & Perks\nDiversity & Inclusion\nSocial Impact\nLet's Talk\nCybage\nMain navigation\nServices\nWhere Your Needs Meet Our Expertise\nEmbark on a journey of innovation with our services crafted to propel your growth. From strategic planning to execution, we enable you to transform your business.\nDigital Product Engineering\nDigital Product Engineering\nEngineering your future with breakthrough solutions.\nConcept & Ideation\nResearch, Design & Development\nTest Engineering\nSustained Engineering\nSupport & Reliability\nDocumentation and Training\nMigration\nRe-Engineering\nTechnology Solutions\nTechnology Solutions\nTransforming businesses with cutting-edge tech solutions.\nArchitectural Services\nBig Data\nBusiness Intelligence\nCloud\nRobotic Process Automation (RPA)\nALM & DevOps\nMobility\nArtificial Intelligence\nArtificial Intelligence\nHarnessing AI for smarter decisions and endless possibilities.\nGenerative AI\nData Analytics and AI/ML Solutions\nExperience Cybage Gen AI: Pioneering Generative AI for tailored solutions across industries. Elevate efficiency, enhance experiences, and drive sustainable growth with our expertise.\nPlatform & Integrations\nPlatform & Integrations\nUniting systems for maximized efficiency.\nCustomer Relationship Management (CRM)\nEnterprise Content Management (ECM)\nEnterprise Mobility\nServiceNow\nDigital Transformation\nDigital Transformation\nBuilding tailored solutions for your digital vision.\nConsulting & Strategy\nContent Writing\nCreative Services\nDigital Marketing\nUI/UX Services\nSupport Services\nSupport Services\nSafeguarding your success with reliable support.\nITeS & BPO Services\nTechnical and Application Support\nRemote Infrastructure Management (RIM)\nGCC as a Service\nGCC as a Service\nFuture-ready Global Capability Centers (GCCs). Powered by expertise, delivered as-a-service.\nWhy Choose GCCaaS?\nProcess\nOur Solutions\nDifferentiators\nPE Consulting Services\nPE Consulting Services\nStrategic investments for long-term business growth\nOur Offerings\nPE Solutions\nEngagement & Partnership Models\n\"We are passionate about technology, leveraging the latest advancements to drive creativity and efficiency in our solutions, ensuring that our customers remain at the forefront of innovation.\"\n—Technology Focus\nIndustries\nWhere Tradition Meets Tomorrow\nSteer through the ever-changing landscape with our industry expertise. Our tailored solutions help you move forward, overcoming business challenges and achieving your goals.\nMedia & Advertising\nMedia & Advertising\nTransforming storytelling in the digital age.\nAdTech\nAdvertising & Marketing\nEntertainment Production\nPublishing\nVideo Streaming & OTT\nSoftware & Hi-Tech\nSoftware & Hi-Tech\nPowering progress with next-gen tech solutions.\nGreenfield Development\nExperience Modernization\nTechnology Transformation\nPlatform Consolidation\nTravel & Hospitality\nTravel & Hospitality\nCrafting memorable experiences with modern solutions.\nAirlines\nCar Rentals\nDistribution\nHospitality\nEvents and Meetings\nRetail\nRetail\nCreating experiences beyond channels.\nRetail Transformation\nIntegrated Commerce Enablement\nTechNovative Solutions\nRetail Product Engineering\nSupply Chain & Logistics\nSupply Chain & Logistics\nOptimizing operations for streamlined success.\nFleet Management System (FMS)\nWarehouse Management System (WMS)\n3PL Logistics Solutions\nManufacturing\nTransportation Management System (TMS)\nHealthcare & Life Sciences\nHealthcare & Life Sciences\nInnovating for healthier, brighter tomorrows.\nAdministrative services\nClinical Workflows\nConnected Care\nDigital Health\nDigital Therapeutics\nHealthcare data engineering\nHealthcare managed services\nInteroperability\nLifesciences\nFinTech\nFinTech\nBanking on a tech-enabled future.\nEnterprise Fintech Solutions\nLending & Finance\nPayment Tech\nWealth & Crypto\n\"We are unwavering in our pursuit of delivering consistently exceptional results for our customers, building trust, and nurturing enduring relationships.\"\n—Consistent Delivery Experience\nDifferentiators\nSetting Ourselves Apart\nExplore how Cybage stands out in a competitive landscape by moving beyond boundaries in innovation and excellence.\nExcelShore®\nExcelShore®\nData science-driven innovation and growth.\nWhat is ExcelShore®?\nYour Data Driven Partner\nThe singular goal of the ExcelShore® platform is to maximize the ROI of technology-led businesses through faster time to market, reduction in operating cost overheads, and strategic alignment of monetary resources.\nProduct Intensive Engineering (PIE)\nProduct Intensive Engineering (PIE)\nTransforming software development with speed and quality.\nIntroduction to PIE\nOptimizing the Value Chain\n\"We harness the power of data to inform every decision, continuously improving our processes and products, and providing our customers with unparalleled insights.\"\n—Consistent Delivery Experience\nThe singular goal of the ExcelShore® platform is to maximize the ROI of technology-led businesses through faster time to market, reduction in operating cost overheads, and strategic alignment of monetary resources.\nAbout Us\nPeople. Passion. Perfection.\nWelcome to Cybage, a global leader in Digital Product Engineering Services. Join us in redefining success and excellence in the ever-evolving world of technology.\nCompany Overview\nCompany Overview\nEngineering the future, together.\nLeadership Team\nDiversity & Inclusion\nOur Partners\nFrom the helm of our organization to the forefront of client engagements, Cybage's forward-looking leadership tea\n[...]\nandhinagar\nCybage Software Pvt. Ltd. Infocity,\nTower II, Infocity, 2nd Floor Gandhinagar, Gujarat - 382009\nPh: +91 -79 -6673 7000\nEmail: business@cybage.com\nCybage Software Pvt. Ltd. (GIFT SEZ UNIT)\n7th Floor, Brigade International Financial Centre, Block 14 A, Zone-1, GIFT Multi Services SEZ, Phirozpur and Ratanpur, District Gandhinagar - 382355\nCybage Software Pvt. Ltd. (Footprint, Giftcity)\nGiftcity, 14H Block 14, Footprint, Giftcity, Palaj Gandhinagar - 382355\nHyderabad\nCybage Software Pvt. Ltd.\nDLF Cyber City (SEZ), 7th Floor, Block 2, Gachibowli, Hyderabad, Telangana - 500032\nPh: +91- 40 -66294 100\nEmail: business@cybage.com\nCybage Software Pvt. Ltd.\nDLF Cyber City (SEZ), 6th Floor, Block 3, Gachibowli, Hyderabad, Telangana - 500032\nCybage Software Pvt. Ltd.\nBuilding No./Flat No.: 2-9/A Seri Lingampally Mandal Road, Survey No. 90/2, Gachibowli Hyderabad RANGAREDDY - 500032\nLATAM\nBrazil\nCybage Software Ltda.\nAvenida das Nações Unidas, n. 14401, Tower Office C2 (Tarumã), Office 2005, São Paulo-SP\nPh: +91 8530109729\nEmail: Finance_Brazil@cybage.com\nNorth America\nUSA\nCybage Software, Inc.\nSuite - E, 37 Station Drive, Princeton Junction, NJ 08550\nPh: +1 609 -212 -0308 / +1 609 -212 -0309\nEmail: business@cybage.com\nCanada\nCybage Software Pvt. Ltd.\n77 City Centre Drive, East Tower, Suite 501, Mississauga, ON, L5B 1M5\nPh: +1 437 266 2040\nEmail: business@cybage.com\nEMEA\nUK\nCybage Software (UK) Limited\nC/O Ballards Newman, Apex House, Grand Arcade, Tally Ho Corner, London, England, N12 0EH\nPh: +44 (0) 7827 851 762\nEmail: business@cybage.com\nNetherlands\nCybage Software BV\nPreludeweg 101, 1312 SN Almere North-Holland, The Netherlands\nEmail: business@cybage.com\nGermany\nCybage Software GmbH\nAm Seedamm 44 60489 Frankfurt am Main\nPh: +49 -696 655 4126\nEmail: business@cybage.com\nSweden\nCybage Software Sverige Filial\nC/O Nordic Accounts Stockholm AB, Box 5385, 102 49 Stockholm\nEmail: business@cybage.com\nFrance\nCybage Software France\n71 avenue Victor Hugo 75116 Paris\nEmail: business@cybage.com\nIreland\nCybage Software Pvt. Ltd.\nCompany Formations International Limited, 22 Northumberland Road, Dublin 4, Ballsbridge, Dublin, Ireland, D04ED73\nEmail: business@cybage.com\nPoland\nCybage Software sp. z o.o.\nul.Szlak 77/222, 31-153 Kraków\nEmail: Finance_Poland@cybage.com\nAustralia\nAustralia\nCybage Software Pvt. Ltd\n78 Taylor Street, West Pennant Hills, NSW 2125\nEmail: business@cybage.com\nAsia Pacific\nJapan\nKabushaki Kaisha Cybage Software Japan\n101-0032 7th floor, Toshima Machine Building,\n3-10-7 Iwamotocho,Chiyoda-ku,Tokyo\nPh: +81 03 4540 1346\nEmail: business@cybage.com\nSingapore\nCybage Software Pvt. Ltd.\n19-03 High Street Centre, 1 North Bridge Road, Singapore 179094\nPh: +65 -8121 5847\nEmail: business@cybage.com\nPune\nGandhinagar\nHyderabad\nLet's Get Moving!\nYour purpose, our passion. Connect with us and let's make things happen.\nImage\nName\nRelationship with Cybage\nSelect New Business Opportunities/Customer Partner CybageKhushboo/CybageAsha Job Seeker Ex-Cybagian\nJob Title\nWork Email ID\nMessage\nAgree to the privacy policy\nI have read and agree to the Privacy Policy .\nSubscribe to Cybage's latest thought leadership, blogs and updates\nGet in touch\nYour feedback\nis important to us to help us serve you better.\nShare your feedback\nStay Informed with the latest insights from our LinkedIn Newsletter\nSubscribe\nFooter\nServices\nDigital Product Engineering\nTechnology Solutions\nArtificial Intelligence\nPlatform & Integrations\nDigital Transformation\nSupport Services\nGCC as a Service\nPE Consulting Services\nIndustries\nMedia & Advertising\nSoftware & Hi-Tech\nTravel & Hospitality\nRetail\nSupply Chain & Logistics\nHealthcare & Life Sciences\nFinTech\nDifferentiators\nExcelShore®\nProduct Intensive Engineering (PIE)\nAbout Us\nCompany Overview\nOur Partners\nResponsible Business\nNewsroom\nAwards and Recognitions\nResource Center\nCareers\nContact Us\nGlobal Presence\nAustralia\nUSA\nUK\n©2026 Cybage Software Pvt. Ltd. All Rights Reserved.\n| Whistleblower@cybage.com | Privacy Policy",
-          "page_text_chars": 12000,
-          "text_source": "page",
-          "email_obfuscated": false
-        },
-        "pairedItem": {
-          "item": 1
-        }
-      },
-      {
-        "json": {
-          "result_id": "RES-8vj6y3",
-          "campaign_id": "CMP-2026-8QF3",
-          "source_url": "https://www.progressive.in/locations/it-company-pune",
-          "normalized_domain": "progressive.in",
-          "source_platform": "google_serp",
-          "title": "IT Company in Pune, Maharashtra",
-          "snippet": "Partner with a Trusted IT Service Provider in Pune, Maharashtra. With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...",
-          "query": "\"IT Services\" (\"IT services\" OR \"software company\") \"Pune\" -site:linkedin.com/jobs",
-          "discovery_time": "2026-10-16T12:00:23.891Z",
-          "scrape_status": "SCRAPED",
-          "http_status": 200,
-          "page_text": "IT Company in Pune, Maharashtra | Progressive Techserve\nx\nServices\nDigital Workplace Services\nDigital Workplace Management\nGlobal Service Desk\nManaged IT Staffing\nDigital Infrastructure Services\nHybrid Cloud Data Center Management\nNetwork Management\nMonitoring & Alerting\nDatabase Management\nApplication Management\nCyber Security\nIT/OT Security Assessment\n360° Security Assessment\nVulnerability Assesment Penetration Testing\nPhishing Simulation\nThreat Exposure Management\nCloud Security Assessment\nOT Security\nAI Powered IT/OT SecOps\n24/7 Security Operations Center (SOC)\nSecurity Information & Event Management (SIEM)\nUser & Entity Behaviour Analytics (UEBA)\nSecurity Orchestration, Automation & Response (SOAR)\nThreat Intelligence\nThreat Hunting\nDigital Forensics Analysis\nDark Web Monitoring\nEmail Phishing\nSecurity Hardening\nInfrastructure & Application Security Hardening\nVulnerability Remediation\nSecurity Implementation Services\nCloud Security Services\nData Loss Prevention\nEDR\nNetwork Security\nServices\nDigital Workplace Services\nDigital Infrastructure Services\nCyber Security\nDigital Workplace Services\nBuild a Hassle-free Digital Workplace Environment\nDigital Workplace Management\nGlobal Service Desk\nManaged IT Staffing\nDigital Infrastructure Services →\nEmpowering your IT infrastructure with advanced, scalable solutions for hybrid data centers, proactive network management, and 24/7 monitoring.\nHybrid Cloud Data Center Management\nNetwork Management\nMonitoring & Alerting\nDatabase Management\nApplication Management\nCyber Security Services\nEnd-to-end cybersecurity services to protect, detect, and respond to evolving digital threats.\nCyber Risk & Security Assesment\n360° Security Assessment\nVulnerability Assessment Penetration Testing\nPhishing Simulation\nThreat Exposure Management\nCloud Security Assessment\nOT Security\nSecurity Implementation\nCloud Security Services\nData Loss Prevention\nEDR\nNetwork Security\nSecurity Hardening & Remediations\nInfrastructure & Application Security Hardening\nVulnerability Remediation\nAI Powered Security Operations (SecOps)\n24/7 Security Operations Center (SOC)\nSecurity Information & Event Management (SIEM)\nUser & Entity Behaviour Analytics (UEBA)\nSecurity Orchestration, Automation & Response (SOAR)\nThreat Intelligence\nThreat Hunting\nDigital Forensics Analysis\nDark Web Monitoring\nEmail Phishing\nProducts\nDigital Workplace Management\nVAPT\nSIEM Calculator\nIndustries\nHealthcare\nPharmaceutical\nManufacturing\nBFSI\nConsumer Goods\nMedia & Entertainment\nReal-estate\nCorporate Overview\nOur Story\nLeadership\nCorporate Social Responsibility\nCareers\nQuality Policy\nIndustry Recognition\nVision, Mission & Our Culture\nLife At Progressive\nResources\nBlogs\nVideos\nNewsroom\nCase Studies & eBooks\nQuick Links\nContact Us\nGet in Touch\nTalk To Expert\nHome\nIT Company Pune\nReliable IT Services for Pune\nGet Results with One of the Top IT companies Serving Pune\nAre you looking to leverage technologies and maximize your business productivity? Our comprehensive IT Infrastructure Managed solutions are designed to help you achieve just that. With expert IT asset management, network monitoring, IT security, and end-user services, we use the latest technology to manage and secure your networks and IT assets.\nPartner with a Trusted IT Service Provider in Pune, Maharashtra\nWith over 26 years of experience in the industry, we deliver top-rated and secure IT services to global clients across various verticals and sectors. Using automation, 24x7 NOC-SOC facilities, and proven capabilities, our teams ensure your IT infrastructure is always available and functioning at its best. Trust Progressive Techserve for all your IT needs and experience the benefits of expert and efficient IT solutions in Pune.\nAccess world-class technologies and services. Get advanced solutions without managing infrastructure.\nExperience smoother and more effective IT systems and networks. Reduce disruptions and improve efficiency with expert management.\nProtect sensitive data and critical business assets from cyber threats with managed security services.\nKeep IT costs under control with predictable pricing.\n24x7 remote IT support enables fast technical assistance anytime, anywhere.\nProven IT Security Measures for Defence Against Hackers & Malware\nProtect your business with the help of Progressive Techserve's managed IT security services. Our Security Operations Center, which runs all day and night, uses effective technologies and processes to identify and react to any possible dangers instantly, ensuring that your valuable data and assets are completely secure. With us as your IT Security service provider, you can have peace of mind knowing that your business is always safe and secure.\nIdentifying and responding to threats in real-time\nOngoing monitoring of network and system security to maintain visibility\nReducing the likelihood of cyber breaches and data theft\nAdhering to industry regulations and requirements to stay compliant\nEnhancing the overall security position of your organization\nImplementing AI and ML-driven best practices in cybersecurity\n28+\nSuccessful\nYears\n150+\nActive\nClients\n1300+\nTechnical\nResources\n95%+\nAnnuity\nBusiness\n70%+\nCustomers\n5+ Years\nCRISIL\nBBB-/Stable\nComplete Suite of IT Services, Available 24x7\nGlobal Service Desk\nIT Asset Management\nNetwork Monitoring & Management\nDigital Workplace Services\nManaged IT Security\nHybrid Cloud & Data Center Management\nService Integration & Management\nReceive uninterrupted IT support and enable your teams to focus on essential operations.\nMaximize the value of your technology investments, control expenses, and mitigate compliance risks.\nEnsure seamless connectivity, reliability, and performance with zero interruptions or downtime risks.\nEnhance employee productivity and engagement with comprehensive workplace solutions.\nSafeguard your sensitive data and assets against cyber threats with dependable services.\nOptimize your infrastructure, enhance performance, and scale dynamically.\nSimplify your IT operations, reduce complexity, and enhance service delivery.\nComplete Suite of IT Services, Available 24x7\nGlobal Service Desk\nReceive uninterrupted IT support and enable your teams to focus on essential operations.\nIT Asset Management\nMaximize the value of your technology investments, control expenses, and mitigate compliance risks.\nNetwork Monitoring & Management\nEnsure seamless connectivity, reliability, and performance with zero interruptions or downtime risks.\nDigital Workplace Services\nEnhance employee productivity and engagement with comprehensive workplace solutions.\nManaged IT Security\nSafeguard your sensitive data and assets against cyber threats with dependable services.\nHybrid Cloud & Data Center Management\nOptimize your infrastructure, enhance performance, and scale dynamically.\nService Integration & Management\nSimplify your IT operations, reduce complexity, and enhance service delivery.\nEmpower Your Business with 24x7 IT Services in Pune\nBook a Call\nExperience Seamless Connectivity with 24X7 Network Operations Center\nAt Progressive Techserve, we offer uninterrupted IT infrastructure management services to businesses through our Network Operations Center which operates round-the-clock. Our proficient monitoring and management capabilities enable us to efficiently handle multiple on-premises and cloud-based technologies, thereby simplifying IT infrastructure management for businesses of all sizes.\nOptimize your IT infrastructure for smooth operations.\nEnsure continuous system availability and avoid costly downtime.\nProactively detect and resolve issues to prevent disruption.\nGet real-time visibility into network performance and security.\nStay current with the latest technologies and don't fall behind.\nNext-Generation IT Asset Management Practices for Improved Efficiency\nProgressive Techserve recognizes the importance of efficient IT asset management in achieving business success. With more than 27 years of industry experience, we have position\n[...]\nes.\nWhat kind of IT security measures does Progressive Techserve offer?\nProgressive Techserve offers proven IT security measures designed to safeguard your sensitive data and critical business assets against cyber threats. Their Security Operations Center, which runs all day and night, uses effective technologies and processes to identify and react to any possible dangers instantly. They also adhere to industry regulations and requirements to stay compliant, enhancing the overall security position of your organization. They implement AI and ML-driven best practices in cybersecurity to ensure the highest level of security for your business.\nHow can Progressive Techserve help my business with IT asset management?\nProgressive Techserve specializes in managing hardware assets and software licenses, equipping businesses with the necessary tools to comply with regulations. They can help your business avoid penalties by keeping licensing agreements up to date for compliance. They also optimize infrastructure and cut IT costs with asset management best practices. Additionally, they boost endpoint security by identifying and fixing device vulnerabilities and making data-driven decisions and planning effectively with their centralized IT asset repository.\nWhat factors make Progressive Techserve one of the best IT companies in Pune?\nProgressive Techserve is considered one of the best IT companies in Pune due to its unwavering focus on customer satisfaction, commitment to quality, and successful track record of delivering projects on time and within budget. With a team of skilled and experienced professionals, well-established NOC & SOC centers, recognition from top analysts like Gartner and IDC, and over 150 clients worldwide, Progressive Techserve provides truly reliable IT-managed services and 24x7 availability.\nEmpower Your Business with 24x7 IT Services in Pune\nBook a Call\nRequest a Call Now\nName *\nLooks good!\nPlease enter your first name.\nPhone Number *\nLooks good!\nPlease enter your phone number.\nBusiness Email *\nLooks good!\nPlease provide a valid email address.\nCompany Name *\nLooks good!\nPlease enter your company name.\nSelect Service\nGlobal Service Desk\nCyber Security Management\nNetwork Monitoring\nIT Asset Management\nDigital Workplace Management\nHybrid Cloud DC Management\nSelect Services*\nLooks good!\nPlease select your service.\nDownload e-Book\nRelated Locations\nNoida\nMumbai\nBangalore\nDelhi\nGurgaon\nHyderabad\nCoimbatore\nAhmedabad\nChennai\nABOUT\nOur Story\nLeadership\nIndustry Recognition\nNewsroom\nLife At Progressive\nContact Us\nPlatforms\nWorkelevate\nCentilytics\nSERVICES\nDigital Workplace Services\nDigital Workplace Management\nGlobal Service Desk\nManaged IT Staffing\nDigital Infrastructure Services\nHybrid Cloud Data Center Management\nNetwork Management\nMonitoring & Alerting\nDatabase Management\nApplication Management\nCyber Security\nIT/OT Security Assessment\n360° Security Assessment\nVulnerability Assessment Penetration Testing\nPhishing Simulation\nThreat Exposure Management\nCloud Security Assessment\nOT Security\nAI Powered IT/OT SecOps\n24/7 Security Operations Center (SOC)\nSecurity Information & Event Management (SIEM)\nUser & Entity Behaviour Analytics (UEBA)\nSecurity Orchestration, Automation & Response (SOAR)\nThreat Intelligence\nThreat Hunting\nDigital Forensics Analysis\nDark Web Monitoring\nEmail Phishing\nSecurity Hardening\nInfrastructure & Application Security Hardening\nVulnerability Remediation\nSecurity Implementation Services\nCloud Security Services\nData Loss Prevention\nEDR\nNetwork Security\nBrands\nProgressive Techserve\nZarthi\nWorkelevate\nIndustries\nHealthcare\nPharmaceutical\nManufacturing\nBFSI\nConsumer Goods\nMedia & Entertainment\nReal-estate\nQUICK LINKS\nSitemap\nCareers\nProducts\nDigital Workplace Management\nVAPT\nSIEM Calculator\nINSIGHTS\nBlogs\nCase Studies & eBooks\nNewsroom\nQuality Policy\n© Copyright 2026, Progressive Techserve (formerly known as Progressive Infotech), All rights reserved.\nPrivacy Policy\nTerms & Conditions\nRefund Policy",
-          "page_text_chars": 12000,
-          "text_source": "page",
-          "email_obfuscated": false
-        },
-        "pairedItem": {
-          "item": 2
-        }
-      },
-      {
-        "json": {
-          "result_id": "RES-1cjnm0q",
-          "campaign_id": "CMP-2026-8QF3",
-          "source_url": "https://www.sapphiresolutions.net/top-it-company-in-pune",
-          "normalized_domain": "sapphiresolutions.net",
-          "source_platform": "google_serp",
-          "title": "Top IT Company in Pune | Best IT Services",
-          "snippet": "Boost your business with modern technology and a Top IT Company in Pune. Get expert tech IT services tailored to your needs. Contact us today for innovative ...",
-          "query": "\"IT Services\" (\"IT services\" OR \"software company\") \"Pune\" -site:linkedin.com/jobs",
-          "discovery_time": "2026-10-16T12:00:23.891Z",
-          "scrape_status": "SCRAPED",
-          "http_status": 200,
-          "page_text": "Top IT Company in Pune | Best IT Services For Sales: +1-754-258-7670\nFor Sales: +91-942-970-9662\nSapphire Software Solutions\n[email protected]\nSchedule a Meeting\nCompany\nProduct\nServices\nTechnology\nHire Developers\nOur Work\nLet's Talk AI\nContact Us\nGet in touch\nTop IT Company in Pune\nAre you exploring to increase your company productivity by utilizing technology? Our all-inclusive managed IT infrastructure solutions are made to assist you in doing exactly that. We employ the newest technology to manage and safeguard your networks and IT assets with our skilled IT management, network monitoring, IT security, and end-user services. By constantly learning and adjusting to new developments, we maintain our leadership position in the IT sector. Our dedication guarantees that you will get the newest and best technological solutions. Top IT Company in Pune, with a focus on full-service tech solutions, such as software engineering, web design, mobile app development, and website development. We guarantee customized solutions that advance your company thanks to our creative approach.\nWhy Choose Sapphire for IT Services?\nChoosing Sapphire Software Solutions for IT services may offer a number of advantages, contingent on your organization's needs. Our team of specialists brings significant expertise in technology and practical experience to every project. We offer a wide range of services that are customized to meet your needs, from infrastructure management and digital transformation to cloud computing and cybersecurity. As a dependable partner in the IT industry, we take great pride in our broad technical expertise, astute commercial acumen, and customer-focused approach. Our capacity to understand the challenges faced by each of our clients and offer solutions that are specific to their needs. Hire IT developers who can provide scalable solutions so you can keep up with technological advancements, grow with your company, and adjust to your changing needs.\nIT Market Stats\nThe global web development market size was roughly USD 55500.0 million in 2021. As per our research, the market is expected to reach USD 89015.19 million by 2027, exhibiting a CAGR of 8.03% during the forecast period.\nConnect with an Expert\nConnect with an Expert\nWorld Wide Top Rated Web Development Company on Clutch\nOur Expert Services offered from IT Company\nLook for IT services that guarantee your company's creativity, effectiveness, and dependability.\nIT Services\nOffering organizations complete IT system support and monitoring is the aim of IT services in Pune. We can make sure that their IT infrastructure is operating well while letting them concentrate on their main business by outsourcing IT administration.\nIT Cloud Services\nYou can ensure a successful digital transition with IT Cloud Services in Pune trustworthy migration support, cloud consulting, Microsoft 365 hosting, disaster recovery services, and more.\nIT Services Management\nAs a managed services provider, Security provides small and medium-sized enterprises with all-inclusive IT solutions. IT services management in Pune offers round-the-clock managed IT assistance to keep your systems operating efficiently.\nIT Services Outsourcing\nIn an increasingly technologically advanced world, outsourcing IT services Outsourcing in Pune is a proven approach that helps companies access outside expertise, save money, and maintain a competitive edge.\nIT Consulting Services\nWith the support of our IT consulting services, your company can save operating expenses, increase overall productivity, and fully utilize technology. Having the correct equipment is not enough to stay ahead; you also need the appropriate plan.\nIT Solutions\nOur all-inclusive IT solutions are made to enable businesses of all sizes to take advantage of technology that enables smooth operations, boosts productivity, and stimulates growth.\nGet A Free Quote for Your Project\nSapphire Exceptional Process in Creating Cutting-edge IT Applications\nAI/ML\nWe use AI solutions to automate software processes, provide insights, and promote more intelligent decision-making by leveraging the potential of AI/ML technology.\nIoT\nOur software for Internet of Things solutions is designed to provide customers with intelligent automation, smooth integration, and real-time monitoring, resulting in dramatic results for your company.\nData Science\nOur services, which range from big data solutions to predictive analytics, enable you to find hidden trends, streamline processes, and make data-driven choices that advance your company.\nCloud Computing\nWith the help of our cloud software solutions, your company may run more adaptable and resiliently, thanks to their smooth migration, strong infrastructure, and affordable administration.\nAR/VR\nWe create software that provides a feeling of realism that spans the actual and digital worlds, whether it is used for interactive marketing, immersive training, or other purposes.\nComputer Vision\nWe can provide your software computer vision features to improve accuracy, automate processes, and open new avenues for creativity and job efficiency, ranging from picture recognition to video analysis.\nAI/ML\nWe use AI solutions to automate software processes, provide insights, and promote more intelligent decision-making by leveraging the potential of AI/ML technology.\nIoT\nOur software for Internet of Things solutions is designed to provide customers with intelligent automation, smooth integration, and real-time monitoring, resulting in dramatic results for your company.\nData Science\nOur services, which range from big data solutions to predictive analytics, enable you to find hidden trends, streamline processes, and make data-driven choices that advance your company.\nCloud Computing\nWith the help of our cloud software solutions, your company may run more adaptable and resiliently, thanks to their smooth migration, strong infrastructure, and affordable administration.\nAR/VR\nWe create software that provides a feeling of realism that spans the actual and digital worlds, whether it is used for interactive marketing, immersive training, or other purposes.\nComputer Vision\nWe can provide your software computer vision features to improve accuracy, automate processes, and open new avenues for creativity and job efficiency, ranging from picture recognition to video analysis.\nAI/ML\nWe use AI solutions to automate software processes, provide insights, and promote more intelligent decision-making by leveraging the potential of AI/ML technology.\nIoT\nOur software for Internet of Things solutions is designed to provide customers with intelligent automation, smooth integration, and real-time monitoring, resulting in dramatic results for your company.\nData Science\nOur services, which range from big data solutions to predictive analytics, enable you to find hidden trends, streamline processes, and make data-driven choices that advance your company.\nCloud Computing\nWith the help of our cloud software solutions, your company may run more adaptable and resiliently, thanks to their smooth migration, strong infrastructure, and affordable administration.\nAR/VR\nWe create software that provides a feeling of realism that spans the actual and digital worlds, whether it is used for interactive marketing, immersive training, or other purposes.\nComputer Vision\nWe can provide your software computer vision features to improve accuracy, automate processes, and open new avenues for creativity and job efficiency, ranging from picture recognition to video analysis.\nOur Premium Services\nAs a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting-edge tools and frameworks. Contact us to learn more!\nMobile App Development\nSoftware Development\nWeb Development\n.NET Development\nFlutter App Development\nPHP Development\nHire Dedicated Developers\nMern Stack Development\nFull Stack Development\nLaravel Development\nDevelop Your IT with Modern Solutions from IT Compan\n[...]\nrk in?\nWe serve a broad spectrum of industries with our IT services, including manufacturing, SMBs, healthcare, legal, finance, and education.\n4. How do you protect businesses from cyber threats?\nWe use firewalls, endpoint protection, network monitoring, staff training, and frequent security audits as part of our multi-layered security approach.\n5. How much do your services cost for an IT Company in Pune?\nWe can adjust our prices to meet the demands of your business. We provide both fixed-price monthly subscriptions and project-based services at bespoke pricing.\n6. What size companies do you typically work with?\nWe deal with start-ups, mid-sized companies, and enterprise-level enterprises, and our services are scalable.\nWhat Sets Us Apart Top IT Company in Pune\nBeing unique is our quality! Sapphire Solutions believe in the things that give us an edge over our competitors. We are renowned Top IT Company in Pune serving customers with end-to-end support.\nFlexible-Engagement-Models\nTotal customized and customer-centric engagement models facilitating hourly or fixed rate hiring of developers.\n100% Transparency\n100% transparency policy to keep our client and our team on the same page.\nExperienced Developers\nOur team of capable and experienced developers handle your unique business needs efficiently and have working experience in versatile domains.\nTimely Delivery\nWe value the time and are particular about timely deliveries by following the highest quality standards.\nTechnical Support\nAsk any technical query and get it solved by our expert technical support staff! With fruitful interaction, get the best possible solutions for your problems from our consultation and support team.\nLet's Discuss\nYour name *\nEmail ID *\nMobile Number *\nTell us more about your project *\nSend\nHave Sapphire Top IT Company in Pune Challenge To Address ?\nGet access to Top IT Company in Pune to transform your ideas into a robust application.\nHire now\nSubscribe us and Get the latest updates and news\nYour name *\nYour Email ID *\nMobile Number *\nSubscribe\nCompany\nAbout Sapphire\nOur Team\nEvents & Activities\nCareers (Jobs)\nContact-Us\nPortfolio\nAwards & Recognition\nWhy Choose Us\nServices\nMobile App Development\nSoftware Development\nWeb Development\nProgressive Web App Development\nIT Outsourcing Services\nBlockchain Development\nFull Stack Development Services\nNext Js Development\nTechnology\n.NET Development\nPHP Development\nAndroid Development\nIOS Development\nFlutter Development\nAngular Development\nReact Development\nNodeJS Development\nHire Developers\nHire Mobile App Developers\nHire Dedicated Developers\nHire Software Developers\nHire AI Developers\nHire Flutter App Developers\nHire Full Stack Developer\nHire Android App Developers\nHire React Js Developers\nAI Services\nAI Development Service\nAI Copilot Development\nEthical AI Development\nAI Prompt Engineering\nAdaptive AI Development\nGenerative AI Development\nAI in Business Intelligence Development\nAI in Marketing\nSolutions\nTaxi Booking App\nCovid Tracker App\nE-Commerce App\nProduct Finder App\nEyelash Booking App\nLanguage Learning App\nBarber Shop Booking App\nOn Demand App Development\nAwards & Recognition\nContact For Sales\n[email protected] IN: +91-942-970-9662\nUS: +1-754-258-7670\nContact for Career (Jobs)\n[email protected] +91-909-997-6034\n900+ REVIEWS\n320+ REVIEWS\n200+ REVIEWS\nIndia(HQ)\nC/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\nUSA\n5004 NW 116th Ave Coral Springs, Florida, FL 33076\nCanada\n111 Tarawood lane NE, unit#403 Calgary AB, T3J 0G8\nAustralia\nU 2B 305 Harborne Street, Glendalough 6016 WA\nUK\n42 Audley Avenue, Gillingham,ME73AY United Kingdom\nUAE\nA-21, Building 21, Ghoroob,Mirdif Dubai, United Arab Emirates\n© 2026 Sapphire Software Solutions. All rights reserved. Privacy Policy | Terms of Use\nCONTACT US\nContact for Sales\n+91-942-970-9662\n+1-754-258-7670\nOR\nRequest a call back :\nSubmit\nContact for Careers (Jobs)\n+91-909-997-6034\nWhatsApp for Sales\n+91-942-970-9662",
-          "page_text_chars": 12000,
-          "text_source": "page",
-          "email_obfuscated": true
-        },
-        "pairedItem": {
-          "item": 3
-        }
-      }
-    ],
-    "Groq Extract": [
-      {
-        "json": {
-          "id": "chatcmpl-8df2e099-2fe3-4a46-b993-93656af51909",
-          "object": "chat.completion",
-          "created": 1792494470,
-          "model": "openai/gpt-oss-120b",
-          "choices": [
-            {
-              "index": 0,
-              "message": {
-                "role": "assistant",
-                "content": "{\"extraction_successful\":true,\"company_name\":\"Cybage Software Pvt. Ltd.\",\"official_website\":null,\"industry_sector\":null,\"headquarters_location\":null,\"company_description\":\"Digital Product Engineering and Outsourced IT Services | Technology Consulting\",\"estimated_employee_range\":\"UNKNOWN\",\"key_decision_maker\":{\"full_name\":null,\"designation\":null,\"public_business_email\":null,\"linkedin_profile_url\":null},\"extracted_evidence_snippets\":[\"Digital Product Engineering and Outsourced IT Services | Technology Consulting: Cybage\",\"Cybage Software Pvt. Ltd. ... 6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014.\",\"Email: business@cybage.com\"],\"confidence_level\":\"LOW\",\"company_contact_email\":\"business@cybage.com\"}",
-                "reasoning": "We need to extract fields.\n\nWe have a search result snippet and page content. It's a company website (Cybage Software Pvt. Ltd.). So extraction_successful = true.\n\ncompany_name: \"Cybage Software Pvt. Ltd.\" appears. Use that.\n\nofficial_website: Not directly given, but we have no URL. The snippet doesn't include URL. Should we set null? The schema requires official_website not null. Must be string or null. If not provided, set null. That's allowed.\n\nindustry_sector: The page lists \"Industries\" and categories like Media & Advertising, Software & Hi-Tech, etc. But we need a sector. The snippet says \"Digital Product Engineering and Outsourced IT Services\". Could be \"IT Services\" or \"Software Development\". However rule: only if explicitly stated. There's \"Digital Product Engineering and Outsourced IT Services\". That's a description, not sector. Could we infer sector? Probably not; need explicit sector term. Not present. So industry_sector = null.\n\nheadquarters_location: The snippet includes address: \"6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014.\" It says not explicitly \"headquarters\". But it's likely address. However rule: only if text says headquarters, head office, HQ, or (HQ) next to address. Not present. So headquarters_location = null.\n\ncompany_description: Could use description from page: \"Digital Product Engineering and Outsourced IT Services | Technology Consulting\". That's a description. It's present. So we can set that string.\n\nestimated_employee_range: Not given. Must not be null; must be one of enumerated values or UNKNOWN. Since not stated, set \"UNKNOWN\". confidence_level: Since we have some info but not all, maybe LOW. Rule: if field not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). So confidence_level = \"LOW\".\n\ncompany_contact_email: General inbox emails: we have \"business@cybage.com\". That's a general company inbox (business@). So set that.\n\nkey_decision_maker: Need full_name, designation, public_business_email, linkedin_profile_url. Not present. Must still include object with required fields. If not present, set each to null. But rule: if not explicitly stated, return null. So all null. However need to include fields. So full_name null, designation null, public_business_email null, linkedin_profile_url null.\n\nextracted_evidence_snippets: up to 3 sentences verbatim supporting industry or role claims. Provide sentences that mention industry sector or description. For example: \"Digital Product Engineering and Outsourced IT Services | Technology Consulting: Cybage\". Also \"Cybage Software Pvt. Ltd. ... 6th Floor, Cerebrum B2, The Cerebrum IT Park, Near Gold Adlabs, Kalyani Nagar, Pune, Maharashtra - 411014.\" Also \"Email: business@cybage.com\". Provide up to 3.\n\nMake sure JSON includes all required fields.\n\nLet's craft JSON.\n\nCheck schema: key_decision_maker required fields: full_name, designation, public_business_email, linkedin_profile_url. So include them all as null.\n\ncompany_contact_email can be null or string. We'll set string.\n\nofficial_website null.\n\nindustry_sector null.\n\nheadquarters_location null.\n\ncompany_description string.\n\nestimated_employee_range \"UNKNOWN\".\n\nconfidence_level \"LOW\".\n\nextraction_successful true.\n\nextracted_evidence_snippets array of strings.\n\nNow produce compact JSON.\n\n"
-              },
-              "logprobs": null,
-              "finish_reason": "stop"
-            }
-          ],
-          "usage": {
-            "queue_time": 0.351611185,
-            "prompt_tokens": 1031,
-            "prompt_time": 0.188166692,
-            "completion_tokens": 916,
-            "completion_time": 1.918314911,
-            "total_tokens": 1947,
-            "total_time": 2.106481603,
-            "completion_tokens_details": {
-              "reasoning_tokens": 729
-            }
-          },
-          "usage_breakdown": null,
-          "system_fingerprint": "fp_f640395b96",
-          "x_groq": {
-            "id": "req_01m5cfxz9ze5yrrva7avq3zbbn",
-            "seed": 1388096592
-          },
-          "service_tier": "on_demand"
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      },
-      {
-        "json": {
-          "id": "chatcmpl-4c026fbd-90dc-4ce6-8ede-d9bdb0252120",
-          "object": "chat.completion",
-          "created": 1792494476,
-          "model": "openai/gpt-oss-120b",
-          "choices": [
-            {
-              "index": 0,
-              "message": {
-                "role": "assistant",
-                "content": "{\"extraction_successful\":true,\"company_name\":\"Progressive Techserve\",\"official_website\":null,\"industry_sector\":\"IT Services\",\"headquarters_location\":null,\"company_description\":\"Partner with a Trusted IT Service Provider in Pune, Maharashtra. With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\",\"estimated_employee_range\":\"UNKNOWN\",\"key_decision_maker\":{\"full_name\":null,\"designation\":null,\"public_business_email\":null,\"linkedin_profile_url\":null},\"extracted_evidence_snippets\":[\"Partner with a Trusted IT Service Provider in Pune, Maharashtra.\",\"With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\",\"Progressive Techserve (formerly known as Progressive Infotech)\"],\"confidence_level\":\"LOW\",\"company_contact_email\":null}",
-                "reasoning": "We need to extract fields from provided text. It's a search result snippet, not a full website. The text includes company name Progressive Techserve, description, services, industries, etc. We need to decide extraction_successful: The text is not a full website page but appears to be a search result snippet with some content. It's likely considered a website content (maybe from a landing page). It's not an error page. So extraction_successful = true.\n\nNow fill fields:\n\ncompany_name: \"Progressive Techserve\" (appears). Also note \"formerly known as Progressive Infotech\". Use the current name.\n\nofficial_website: Not provided. No URL. So null.\n\nindustry_sector: The text mentions \"IT services\", \"IT Company\". Could be \"IT Services\" or \"Information Technology\". The field expects a string. Since it's explicitly stated? The snippet says \"IT Company in Pune, Maharashtra\". Also \"Trusted IT Service Provider\". So we can set \"Information Technology\" or \"IT Services\". Use as appears: maybe \"IT Services\". The rule: use only if explicitly stated. \"IT Service Provider\" is there. So industry_sector = \"IT Services\". Or \"IT\". I'll choose \"IT Services\".\n\nheadquarters_location: Not explicitly given. Only \"Pune, Maharashtra\". Not stated as headquarters. So null.\n\ncompany_description: Could extract a sentence: \"Partner with a Trusted IT Service Provider in Pune, Maharashtra. With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\" That's a description. Use a sentence from text. Provide null if not? It's present. So include that.\n\nestimated_employee_range: Not given. Must not be null; must be one of enum values, cannot be null. If not stated, set \"UNKNOWN\". So \"UNKNOWN\".\n\nconfidence_level: Since we have limited info, set \"LOW\" as per rule if not explicit? The rule: estimated_employee_range and confidence_level must never be null. If not enough confidence, set LOW. So confidence_level = \"LOW\".\n\ncompany_contact_email: Look for general inbox like info@, contact@, business@, sales@. Not present. There's \"Business Email *\" placeholder but no actual email. So null.\n\nkey_decision_maker: Must include full_name, designation, public_business_email, linkedin_profile_url. Since not provided, we must set each to null? But required fields cannot be null? The schema says each property type includes null, so can be null. So we set all to null.\n\nextracted_evidence_snippets: up to 3 sentences verbatim supporting industry or role claims. Provide sentences that mention industry: e.g., \"Partner with a Trusted IT Service Provider in Pune, Maharashtra.\" and \"With over 26 years of experience in the industry, we deliver top-rated and secure IT services ...\" and maybe \"Progressive Techserve (formerly known as Progressive Infotech)\"? That supports name. Provide up to 3.\n\nNow construct JSON.\n\nCheck required fields: extraction_successful, company_name, official_website, industry_sector, headquarters_location, company_description, estimated_employee_range, key_decision_maker, extracted_evidence_snippets, confidence_level, company_contact_email.\n\nAll present.\n\nNow produce compact JSON.\n\n"
-              },
-              "logprobs": null,
-              "finish_reason": "stop"
-            }
-          ],
-          "usage": {
-            "queue_time": 0.220353305,
-            "prompt_tokens": 1001,
-            "prompt_time": 0.046664023,
-            "completion_tokens": 843,
-            "completion_time": 1.75621541,
-            "total_tokens": 1844,
-            "total_time": 1.802879433,
-            "completion_tokens_details": {
-              "reasoning_tokens": 666
-            }
-          },
-          "usage_breakdown": null,
-          "system_fingerprint": "fp_27194a498a",
-          "x_groq": {
-            "id": "req_01m5cfy54eedrt0pegxte09cew",
-            "seed": 1984901771
-          },
-          "service_tier": "on_demand"
-        },
-        "pairedItem": {
-          "item": 1
-        }
-      },
-      {
-        "json": {
-          "id": "chatcmpl-28b28bff-8645-4038-82af-6fb8b21f5ad9",
-          "object": "chat.completion",
-          "created": 1792494483,
-          "model": "openai/gpt-oss-120b",
-          "choices": [
-            {
-              "index": 0,
-              "message": {
-                "role": "assistant",
-                "content": "{\"extraction_successful\":true,\"company_name\":\"Sapphire Software Solutions\",\"official_website\":null,\"industry_sector\":\"IT services\",\"headquarters_location\":\"C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\",\"company_description\":\"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\",\"estimated_employee_range\":\"UNKNOWN\",\"key_decision_maker\":{\"full_name\":null,\"designation\":null,\"public_business_email\":null,\"linkedin_profile_url\":null},\"extracted_evidence_snippets\":[\"Top IT Company in Pune, with a focus on full-service tech solutions, such as software engineering, web design, mobile app development, and website development.\",\"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\",\"India(HQ) C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\"],\"confidence_level\":\"HIGH\",\"company_contact_email\":\"[email protected]\"}",
-                "reasoning": "We need to extract fields per schema.\n\nWe have a search result snippet, not the full website, but includes content that looks like a website page. It's likely a company website content. We need to decide extraction_successful: Since we have company info, not error page, set true.\n\nNow fill fields:\n\ncompany_name: \"Sapphire Software Solutions\" appears multiple times. So set that.\n\nofficial_website: Not provided. No URL. So null.\n\nindustry_sector: It's an IT company, providing IT services. Need evidence snippet. We can set \"Information Technology\" maybe. But must be explicit in text. The text says \"Top IT Company in Pune\", \"IT services\", \"IT sector\". So we can set industry_sector as \"IT services\" or \"Information Technology\". Use something directly from text: \"IT services\". We'll set \"IT services\". It's a string.\n\nheadquarters_location: The text says \"India(HQ) C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\". So we can set that address. Use exactly as appears: \"C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\". Provide as string.\n\ncompany_description: Provide a summary from text. Must be from text, not invented. Use a sentence from text: \"Our all-inclusive managed IT infrastructure solutions are made to assist you in doing exactly that.\" But need description of company. Could combine multiple sentences but must be verbatim? The description field can be any string, but we should use text. Probably we can copy a sentence: \"Sapphire Software Solutions is a certified IT company that helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\" That sentence appears? The text: \"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\" Slightly different. We'll copy that exact sentence: \"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\" That's a description.\n\ncompany_contact_email: General inbox email. The text shows \"[email protected]\" multiple times. That's a placeholder but appears as \"[email protected]\"? Actually the snippet shows \"[email protected]\" (masked). It appears as \"[email protected]\" which is not a real email. But it's still an email address format. It's a generic inbox? It is \"info@sapphiresoftware.com\"? Not visible. The placeholder is \"[email protected]\". Since we must copy exactly as appears, we can include that string. It's a generic inbox? It is \"info@sapphiresoftware.com\"? Not sure. The placeholder is \"[email protected]\". We'll treat that as email. So company_contact_email = \"[email protected]\". (including brackets?). The text shows \"[email protected]\" with brackets. Should we include brackets? The email appears with brackets to hide. The rule: copy email exactly as appears. So include \"[email protected]\". That's fine.\n\nkey_decision_maker: Need full_name, designation, public_business_email, linkedin_profile_url. Not present. So all fields null? But required fields cannot be null? The schema requires those fields present, but they can be null? The property types allow null? For full_name etc they are type [\"null\",\"string\"], but required fields list includes them, so they must be present but can be null. So we set each to null.\n\npublic_business_email: Must be a personal email? Not present. So null.\n\nlinkedin_profile_url: null.\n\nestimated_employee_range: Not stated. Must not be null; must be one of enum values, cannot be null. If not stated, set \"UNKNOWN\". So set \"UNKNOWN\".\n\nconfidence_level: Since we have explicit info, but rule says if not explicit, set LOW. Here we have explicit for many fields, but still we can set \"HIGH\"? The rule: \"If a field is not explicitly stated, return null (or UNKNOWN for estimated_employee_range, LOW for confidence_level). Never guess.\" Confidence_level is overall confidence. Since we have explicit data, we can set \"HIGH\". But is there rule that confidence_level must be set based on overall? Not explicit. We'll set \"HIGH\" because we have clear info.\n\nextracted_evidence_snippets: up to 3 sentences verbatim supporting industry or role claims. Provide sentences that show industry (IT services) and maybe headquarters. Provide up to 3.\n\nSelect:\n\n1. \"Top IT Company in Pune, with a focus on full-service tech solutions, such as software engineering, web design, mobile app development, and website development.\"\n2. \"As a certified IT company, Sapphire helps organizations thrive digitally by offering innovative solutions using cutting‑edge tools and frameworks.\"\n3. \"India(HQ) C/102-103, Ganesh Meridian, Opp. Kargil Petrol Pump, S.G. Highway, Ahmedabad - 380060, Gujarat, INDIA\"\n\nThese are verbatim.\n\nNow construct JSON with required fields.\n\nCheck required fields: extraction_successful, company_name, official_website, industry_sector, headquarters_location, company_description, estimated_employee_range, key_decision_maker, extracted_evidence_snippets, confidence_level, company_contact_email.\n\nAll present.\n\nNow produce compact JSON."
-              },
-              "logprobs": null,
-              "finish_reason": "stop"
-            }
-          ],
-          "usage": {
-            "queue_time": 0.216735827,
-            "prompt_tokens": 1596,
-            "prompt_time": 0.067967541,
-            "completion_tokens": 1368,
-            "completion_time": 2.829197384,
-            "total_tokens": 2964,
-            "total_time": 2.8971649250000002,
-            "completion_tokens_details": {
-              "reasoning_tokens": 1116
-            }
-          },
-          "usage_breakdown": null,
-          "system_fingerprint": "fp_c15aa9c1b7",
-          "x_groq": {
-            "id": "req_01m5cfyazveqkajrq258j1bman",
-            "seed": 1558891224
-          },
-          "service_tier": "on_demand"
-        },
-        "pairedItem": {
-          "item": 2
-        }
-      }
-    ],
     "SerpAPI Request": [
       {
         "json": {
@@ -1897,9 +1745,6 @@
               "10": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=90"
             }
           }
-        },
-        "pairedItem": {
-          "item": 0
         }
       }
     ]
@@ -2086,7 +1931,7 @@
       "main": [
         [
           {
-            "node": "Build LLM Context",
+            "node": "Add About URL",
             "type": "main",
             "index": 0
           }
@@ -2228,6 +2073,39 @@
           }
         ]
       ]
+    },
+    "Add About URL": {
+      "main": [
+        [
+          {
+            "node": "Scrape About",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape About": {
+      "main": [
+        [
+          {
+            "node": "Merge About",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge About": {
+      "main": [
+        [
+          {
+            "node": "Build LLM Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -2235,7 +2113,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "5e426356-a0d8-4d22-b49f-ed89e034cad5",
+  "versionId": "d4a4fc26-d425-4388-a86d-4015f9ecf5ad",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
