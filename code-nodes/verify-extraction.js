@@ -1,8 +1,31 @@
 const src = $('Build LLM Context').all().filter(i => i.json.llm_context);
 const out = [];
-const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
-const isSentence = q => /[.!?]$/.test(norm(q)) && norm(q).split(' ').length >= 5;
 const BOILERPLATE = /all rights reserved|privacy policy|cookie|terms (&|and) conditions|copyright/i;
+
+// Fold look-alike characters so model output and page text compare equal:
+// non-breaking/typographic hyphens, curly quotes, odd spaces, zero-width characters.
+const fold = ch => {
+  if (/[\u2010-\u2015\u2212]/.test(ch)) return '-';
+  if (/[\u2018\u2019\u201B\u2032]/.test(ch)) return "'";
+  if (/[\u201C\u201D\u201F\u2033]/.test(ch)) return '"';
+  if (/[\u200B-\u200D\u2060\uFEFF]/.test(ch)) return '';
+  if (/\s/.test(ch)) return ' ';
+  return ch;
+};
+// folded, whitespace-collapsed text plus a map from each folded index back to the original index
+const index = raw => {
+  const s = String(raw || '');
+  let t = ''; const map = []; let prevSpace = true;
+  for (let i = 0; i < s.length; i++) {
+    const f = fold(s[i]);
+    if (f === '') continue;
+    if (f === ' ') { if (prevSpace) continue; t += ' '; map.push(i); prevSpace = true; }
+    else { t += f; map.push(i); prevSpace = false; }
+  }
+  return { t, map };
+};
+const foldText = raw => index(raw).t.trim();
+const isSentence = n => /[.!?]$/.test(n) && n.split(' ').length >= 5;
 
 $input.all().forEach((item, idx) => {
   const s = src[idx] ? src[idx].json : {};
@@ -17,30 +40,42 @@ $input.all().forEach((item, idx) => {
     out.push({ json: { ...s, extraction_status: 'EXTRACTION_FAILED', extraction_error: msg, retryable: /socket|TLS|ECONN|ETIMEDOUT|429|50\d/i.test(msg) } });
     return;
   }
+
   const hay = String(s.llm_context || '') + ' ' + String(s.page_text || '');
-  const text = norm(hay);
+  const srcIdx = index(hay);
   const flags = [];
 
-  const snippets = (o.extracted_evidence_snippets || []).filter(q => {
-    const ok = isSentence(q) && !BOILERPLATE.test(q) && text.includes(norm(q));
-    if (!ok) flags.push('DROPPED_UNVERIFIED_SNIPPET');
-    return ok;
-  });
+  // Evidence: compare folded text, then store the PAGE's own characters (truly verbatim)
+  const snippets = [];
+  const dropped = [];
+  for (const q of (o.extracted_evidence_snippets || [])) {
+    const qn = foldText(q);
+    const p = qn ? srcIdx.t.indexOf(qn) : -1;
+    const ok = isSentence(qn) && !BOILERPLATE.test(qn) && p >= 0;
+    if (ok) {
+      const original = hay.slice(srcIdx.map[p], srcIdx.map[p + qn.length - 1] + 1).replace(/\s+/g, ' ').trim();
+      if (!snippets.includes(original)) snippets.push(original);
+    } else {
+      flags.push('DROPPED_UNVERIFIED_SNIPPET');
+      dropped.push(String(q).slice(0, 200));
+    }
+  }
 
   const dm = o.key_decision_maker || {};
   let email = dm.public_business_email || null;
   if (email && !hay.toLowerCase().includes(email.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); email = null; }
 
   let name = dm.full_name || null;
-  if (name && !text.toLowerCase().includes(norm(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }
+  if (name && !srcIdx.t.toLowerCase().includes(foldText(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }
 
   let cemail = o.company_contact_email || null;
   if (cemail && !hay.toLowerCase().includes(cemail.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); cemail = null; }
+
   // Never trust model self-rated confidence: derive a cap from what was actually verified
-let conf = o.confidence_level;
-const verifiedFacts = [!!name, !!email, o.estimated_employee_range !== 'UNKNOWN', snippets.length >= 2].filter(Boolean).length;
-if (verifiedFacts < 2) conf = 'LOW';
-else if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';
+  let conf = o.confidence_level;
+  const verifiedFacts = [!!name, !!email, o.estimated_employee_range !== 'UNKNOWN', snippets.length >= 2].filter(Boolean).length;
+  if (verifiedFacts < 2) conf = 'LOW';
+  else if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';
 
   out.push({ json: {
     ...s,
@@ -55,6 +90,7 @@ else if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';
     key_decision_maker: { full_name: name, designation: name ? dm.designation : null, public_business_email: email, linkedin_profile_url: null },
     company_contact_email: cemail,
     extracted_evidence_snippets: snippets,
+    dropped_snippets: dropped,
     confidence_level: conf,
     verification_flags: flags
   } });
