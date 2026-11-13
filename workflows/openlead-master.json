@@ -18,12 +18,12 @@
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.5,
       "position": [
-        -640,
-        -432
+        -3632,
+        432
       ],
-      "id": "e7e04173-6df3-44e3-9dba-84cd8a0abace",
+      "id": "49bb3a8f-adf8-467b-b0d7-58ceb03b9884",
       "name": "Intake Form",
-      "webhookId": "75b54723-1452-4cb7-8171-8c5919f5b97c"
+      "webhookId": "fb439c3f-2897-4e57-ac0e-11f2247701cc"
     },
     {
       "parameters": {
@@ -39,10 +39,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -240,
-        -528
+        -3232,
+        336
       ],
-      "id": "622d01c4-3aea-4058-bca1-372825b086ae",
+      "id": "036524f8-bbb8-4d5a-9b1b-2f36d3e1b039",
       "name": "Parse Prompt (Groq)",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -61,10 +61,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -64,
-        -528
+        -3056,
+        336
       ],
-      "id": "1074b997-1f89-4a05-8b1e-32c7b60f2573",
+      "id": "3196192a-90aa-4b70-a901-f2c4c7056508",
       "name": "Parameter Normalizer"
     },
     {
@@ -95,10 +95,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -448,
-        -432
+        -3440,
+        432
       ],
-      "id": "d01ec838-947c-4639-8826-5680d0802e7d",
+      "id": "7c860a68-23b1-4297-8989-9befbf2f6c8e",
       "name": "Prompt Not Empty"
     },
     {
@@ -129,23 +129,23 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        96,
-        -560
+        -2896,
+        304
       ],
-      "id": "562bd587-7143-47f7-8709-805069f6a024",
+      "id": "6893263d-7023-4570-be1f-0daab12e6963",
       "name": "Config Valid"
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $input.first().json;\nconst MAX_PAGES = 1; // dev: 1 page per query. Never 5 on the free plan.\nconst out = [];\nfor (const q of cfg.compiled_queries) {\n  for (let page = 0; page < MAX_PAGES; page++) {\n    out.push({ json: {\n      campaign_id: cfg.campaign_id,\n      task_category: cfg.task_category,\n      query: q,\n      start: page * 10,\n      max_leads_limit: cfg.max_leads_limit\n    } });\n  }\n}\nreturn out;"
+        "jsCode": "const cfg = $input.first().json;\n// dev cap: at most 2 result pages per query (about 2 SerpAPI credits per query); deeper pages are mostly noise\nconst MAX_PAGES = Math.min(2, Math.max(1, Math.ceil((cfg.max_leads_limit || 10) / 10)));\nconst out = [];\nfor (const q of cfg.compiled_queries) {\n  for (let page = 0; page < MAX_PAGES; page++) {\n    out.push({ json: {\n      campaign_id: cfg.campaign_id,\n      task_category: cfg.task_category,\n      query: q,\n      start: page * 10,\n      max_leads_limit: cfg.max_leads_limit\n    } });\n  }\n}\nreturn out;\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        288,
-        -656
+        -2704,
+        208
       ],
-      "id": "fcd95101-c3d9-4b6d-9863-18b2caeeaa84",
+      "id": "0e69a476-605e-41c4-958e-baa94ad1b1b5",
       "name": "Split Queries"
     },
     {
@@ -187,14 +187,13 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        464,
-        -656
+        -2528,
+        208
       ],
-      "id": "bdec6e8a-87dd-4212-84c8-e0de9c70d3da",
+      "id": "744f79e6-ea03-4126-9a04-d032325c138d",
       "name": "SerpAPI Request",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
-      "executeOnce": true,
       "credentials": {
         "httpQueryAuth": {
           "id": "7pjEvAJUEQHtxKtG",
@@ -205,15 +204,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const BLOCK = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com','youtube.com','wikipedia.org','glassdoor.com','indeed.com','naukri.com','justdial.com','ambitionbox.com','crunchbase.com','scribd.com','goodfirms.co','builtinpune.in','clutch.co','sulekha.com','indiamart.com','quora.com','medium.com','reddit.com','trustpilot.com','g2.com','topdevelopers.co','designrush.com','softwaresuggest.com','techbehemoths.com','startupintros.com'];\nconst LIST_TITLE = /\\b(list of|reviews?|directory)\\b|\\bcompanies\\b|\\b(top|best)\\s+\\d+/i;\nconst cfg = $('Split Queries').first().json;\nconst hash = s => { let h = 5381; for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };\nconst seen = new Set(), out = [], skipLog = [];\nlet errors = 0;\n\nfor (const item of $input.all()) {\n  if (item.json.error || !Array.isArray(item.json.organic_results)) { errors++; continue; }\n  const query = item.json.search_parameters?.q || '';\n  for (const r of item.json.organic_results) {\n    const m = String(r.link || '').match(/^(https?):\\/\\/([^\\/?#:]+)/i);\n    if (!m) { skipLog.push({ link: r.link, reason: 'BAD_URL' }); continue; }\n    const host = m[2].toLowerCase().replace(/^www\\./, '');\n    if (BLOCK.some(b => host === b || host.endsWith('.' + b))) { skipLog.push({ link: r.link, reason: 'BLOCKED_DOMAIN' }); continue; }\n    if (LIST_TITLE.test(r.title || '')) { skipLog.push({ link: r.link, reason: 'LIST_TITLE' }); continue; }\n    if (seen.has(host)) { skipLog.push({ link: r.link, reason: 'DUPLICATE_DOMAIN' }); continue; }\n    seen.add(host);\n    out.push({ json: {\n      result_id: 'RES-' + hash(host),\n      campaign_id: cfg.campaign_id,\n      source_url: r.link,\n      normalized_domain: host,\n      source_platform: 'google_serp',\n      title: r.title || null,\n      snippet: r.snippet || null,\n      query,\n      discovery_time: new Date().toISOString(),\n      scrape_status: 'PENDING'\n    } });\n    if (out.length >= cfg.max_leads_limit) break;\n  }\n}\nif (out.length === 0) return [{ json: { no_hits: true, errors, skipped: skipLog.length, skip_log: skipLog, campaign_id: cfg.campaign_id } }];\nreturn out;"
+        "jsCode": "const BLOCK = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com','youtube.com','wikipedia.org','glassdoor.com','indeed.com','naukri.com','justdial.com','ambitionbox.com','crunchbase.com','scribd.com','goodfirms.co','builtinpune.in','clutch.co','sulekha.com','indiamart.com','quora.com','medium.com','reddit.com','trustpilot.com','g2.com','topdevelopers.co','designrush.com','softwaresuggest.com','techbehemoths.com','startupintros.com','google.com','builtin.com','wellfound.com','coursera.org','edx.org','dev.to','fb.com','github.com','stackoverflow.com','stackexchange.com','udemy.com','geeksforgeeks.org','w3schools.com','paulgraham.com','click.in','tracxn.com','rockerstop.com'];\nconst LIST_TITLE = /\\b(list of|reviews?|directory)\\b|\\bcompanies\\b|\\b(top|best)\\s+\\d+|\\bfreelancers?\\b|\\bclassifieds?\\b/i;\nconst cfg = $('Split Queries').first().json;\nconst hash = s => { let h = 5381; for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };\nconst seen = new Set(), out = [], skipLog = [];\nlet errors = 0;\n\nouter: for (const item of $input.all()) {\n  if (out.length >= cfg.max_leads_limit) break;\n  if (item.json.error || !Array.isArray(item.json.organic_results)) { errors++; continue; }\n  const query = item.json.search_parameters?.q || '';\n  for (const r of item.json.organic_results) {\n    const m = String(r.link || '').match(/^(https?):\\/\\/([^\\/?#:]+)/i);\n    if (!m) { skipLog.push({ link: r.link, reason: 'BAD_URL' }); continue; }\n    const host = m[2].toLowerCase().replace(/^www\\./, '');\n    if (BLOCK.some(b => host === b || host.endsWith('.' + b))) { skipLog.push({ link: r.link, reason: 'BLOCKED_DOMAIN' }); continue; }\n    if (/\\.(edu|gov|mil)$|\\.(ac|edu|gov)\\.[a-z]{2}$/.test(host)) { skipLog.push({ link: r.link, reason: 'EDU_OR_GOV' }); continue; }\n    if (LIST_TITLE.test(r.title || '')) { skipLog.push({ link: r.link, reason: 'LIST_TITLE' }); continue; }\n    if (seen.has(host)) { skipLog.push({ link: r.link, reason: 'DUPLICATE_DOMAIN' }); continue; }\n    seen.add(host);\n    out.push({ json: {\n      result_id: 'RES-' + hash(host),\n      campaign_id: cfg.campaign_id,\n      source_url: r.link,\n      normalized_domain: host,\n      source_platform: 'google_serp',\n      title: r.title || null,\n      snippet: r.snippet || null,\n      query,\n      discovery_time: new Date(Date.now() + 330 * 60000).toISOString().slice(0, 19).replace('T', ' ') + ' IST',\n      scrape_status: 'PENDING'\n    } });\n    if (out.length >= cfg.max_leads_limit) break outer;\n  }\n}\nif (out.length === 0) return [{ json: { no_hits: true, errors, skipped: skipLog.length, skip_log: skipLog, campaign_id: cfg.campaign_id } }];\nreturn out;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        816,
-        -640
+        -2176,
+        224
       ],
-      "id": "4c72d783-759e-4e57-8ffb-2f82e28d2eb9",
+      "id": "93c2efe7-6c61-4013-b38c-8b87f7fa502e",
       "name": "Extract Hits"
     },
     {
@@ -243,10 +242,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        624,
-        -640
+        -2368,
+        224
       ],
-      "id": "3b7ba46d-78d1-434a-998f-adb85a8ea962",
+      "id": "07f0a639-6189-48b5-93b4-ba4869e08414",
       "name": "Is B2B?"
     },
     {
@@ -256,10 +255,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        624,
-        -400
+        -2368,
+        464
       ],
-      "id": "dbc21c6b-f50d-483c-a24a-115cafdee8f0",
+      "id": "465d7acf-3e62-4efb-a688-36cb24ad1f2a",
       "name": "Extract Reddit Hits"
     },
     {
@@ -292,10 +291,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1008,
-        -640
+        -1984,
+        224
       ],
-      "id": "c9ae2710-1e5d-454e-bf05-fc01837d6273",
+      "id": "1d7cbc5f-c134-4c27-98a5-804b19866374",
       "name": "Scrape Page",
       "retryOnFail": false,
       "onError": "continueRegularOutput"
@@ -307,10 +306,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1152,
-        -640
+        -1840,
+        224
       ],
-      "id": "fcf707d5-8831-403d-98ce-6110d014d606",
+      "id": "9696754f-1f6e-4c72-ad0b-abd761347526",
       "name": "Clean Page Text"
     },
     {
@@ -320,23 +319,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        832,
-        -400
+        -2160,
+        464
       ],
-      "id": "c62fcddd-3d2e-448f-9776-1ae02f8bed54",
+      "id": "b94d0f9b-af4d-4417-b334-22c970ad25f6",
       "name": "Reddit Text From SERP"
     },
     {
       "parameters": {
-        "jsCode": "const ROLE = /\\b(founder|co-founder|cofounder|ceo|cto|coo|managing director|director|owner|proprietor|president|chairman|founded (?:in \\d{4} )?by|led by|headed by)\\b/i;\nconst FACT = /(@|headquarter|head office|\\bhq\\b|employees|team of|\\d+\\+?\\s*(?:employees|professionals|engineers|people)|incorporated|registered office)/i;\n// \"Name - Job title\" attribution lines are client testimonials, not company leadership\nconst TESTIMONIAL = /^[^.!?]{2,40}\\s[-–—]\\s[A-Z][^!?]{2,70}$/;\nconst MARK = '--- ABOUT PAGE ---';\nconst MAX_CHARS = 4500; // NFR-04 budget (about 2,000 input tokens with prompt and schema)\n\nconst uniq = arr => [...new Set(arr)];\nconst clean = t => String(t || '').split('\\n').map(s => s.trim()).filter(Boolean);\nconst take = (lines, maxChars) => {\n  const out = []; let n = 0;\n  for (const l of lines) { if (n + l.length + 1 > maxChars) break; out.push(l); n += l.length + 1; }\n  return out.join('\\n');\n};\nconst pri = l => (/@/.test(l) ? 2 : 0) + (ROLE.test(l) ? 2 : 0) + (/headquarter|head office|\\bhq\\b/i.test(l) ? 1 : 0);\n\nreturn $input.all().map(i => {\n  const j = i.json;\n  if (j.scrape_status !== 'SCRAPED' && j.scrape_status !== 'SERP_ONLY') return i;\n\n  let ctx;\n  if (j.scrape_status === 'SERP_ONLY') {\n    ctx = String(j.page_text || '').slice(0, 1500);\n  } else {\n    const full = String(j.page_text || '');\n    const idx = full.indexOf(MARK);\n    const mainLines = clean(idx >= 0 ? full.slice(0, idx) : full);\n    const aboutLines = clean(idx >= 0 ? full.slice(idx + MARK.length) : '');\n    const seen = new Set();\n    const fresh = arr => arr.filter(l => !seen.has(l) && seen.add(l));\n\n    // 1) signals first, so the budget can never cut them off\n    const candidates = uniq([...mainLines, ...aboutLines]).filter(l =>\n      l.length <= 600 && (ROLE.test(l) || FACT.test(l)) && !TESTIMONIAL.test(l) && !(l.length < 25 && !/@/.test(l))\n    );\n    const signal = take(fresh(candidates.sort((a, b) => pri(b) - pri(a)).slice(0, 25)), 1800);\n    // 2) start of the main page\n    const head = take(fresh(uniq(mainLines.slice(0, 15))), 500);\n    // 3) About page: substantive lines only\n    const about = take(fresh(aboutLines.filter(l => l.length >= 40 && !TESTIMONIAL.test(l))), 900);\n    // 4) real footer of the main page (addresses, HQ labels)\n    const footer = take(fresh(uniq(mainLines.slice(-15))), 500);\n\n    const body = ['SIGNAL LINES:\\n' + signal, 'PAGE START:\\n' + head, 'ABOUT PAGE:\\n' + about, 'PAGE FOOTER:\\n' + footer].join('\\n---\\n');\n    ctx = `SEARCH RESULT TITLE: ${j.title || ''}\\nSEARCH RESULT SNIPPET: ${j.snippet || ''}\\n---\\n` + body.slice(0, MAX_CHARS);\n  }\n  return { json: { ...j, llm_context: ctx, llm_context_chars: ctx.length } };\n});"
+        "jsCode": "const ROLE = /\\b(founder|co-founder|cofounder|ceo|cto|coo|managing director|director|owner|proprietor|president|chairman|chief\\s+[a-z]+\\s+officer|founded|led by|headed by)\\b/i;\nconst FACT = /(@|headquarter|head office|\\bhq\\b|employees|team of|\\d+\\+?\\s*(?:employees|professionals|engineers|people)|incorporated|registered office)/i;\n// \"Name - Job title\" attribution lines are client testimonials, not company leadership\nconst TESTIMONIAL = /^[^.!?]{2,40}\\s[-–—]\\s[A-Z][^!?]{2,70}$/;\nconst MARK = '--- ABOUT PAGE ---';\nconst MAX_CHARS = 4500; // NFR-04 budget (about 2,000 input tokens with prompt and schema)\n\nconst uniq = arr => [...new Set(arr)];\nconst clean = t => String(t || '').split('\\n').map(s => s.trim()).filter(Boolean);\nconst take = (lines, maxChars) => {\n  const out = []; let n = 0;\n  for (const l of lines) { if (n + l.length + 1 > maxChars) break; out.push(l); n += l.length + 1; }\n  return out.join('\\n');\n};\nconst pri = l => (/@/.test(l) ? 2 : 0) + (ROLE.test(l) ? 2 : 0) + (/headquarter|head office|\\bhq\\b/i.test(l) ? 1 : 0);\n\nreturn $input.all().map(i => {\n  const j = i.json;\n  if (j.scrape_status !== 'SCRAPED' && j.scrape_status !== 'SERP_ONLY') return i;\n\n  let ctx;\n  if (j.scrape_status === 'SERP_ONLY') {\n    ctx = String(j.page_text || '').slice(0, 1500);\n  } else {\n    const full = String(j.page_text || '');\n    const idx = full.indexOf(MARK);\n    const mainLines = clean(idx >= 0 ? full.slice(0, idx) : full);\n    const aboutLines = clean(idx >= 0 ? full.slice(idx + MARK.length) : '');\n    const seen = new Set();\n    const fresh = arr => arr.filter(l => !seen.has(l) && seen.add(l));\n\n    // 1) signals first, so the budget can never cut them off\n    // a short title line (\"Co-Founder & COO\") is only useful next to the name line above it: keep the pair together, unedited\n    const NAME = /^(?:(?:Mr|Mrs|Ms|Dr)\\.?\\s+)?[A-Z][A-Za-z.'\\u2019-]*(?:\\s+[A-Z][A-Za-z.'\\u2019-]*){1,3}$/;\n    const pairUp = lines => {\n      const out = [];\n      for (const l of lines) {\n        const prev = out.length ? out[out.length - 1] : '';\n        if (ROLE.test(l) && l.length <= 60 && prev && !prev.includes('\\n') && prev.length <= 40 && NAME.test(prev)) out[out.length - 1] = prev + '\\n' + l;\n        else out.push(l);\n      }\n      return out;\n    };\n    const candidates = uniq([...pairUp(mainLines), ...pairUp(aboutLines)]).filter(u =>\n      u.length <= 600 && (ROLE.test(u) || FACT.test(u)) && !TESTIMONIAL.test(u) && !(!u.includes('\\n') && u.length < 25 && !/@/.test(u))\n    );\n    const signal = take(fresh(candidates.sort((a, b) => pri(b) - pri(a)).slice(0, 25)), 1800);\n    signal.split('\\n').forEach(x => seen.add(x));\n    // 2) start of the main page\n    const head = take(fresh(uniq(mainLines.slice(0, 15))), 500);\n    // 3) About page: substantive lines only\n    const about = take(fresh(aboutLines.filter(l => l.length >= 40 && !TESTIMONIAL.test(l))), 900);\n    // 4) real footer of the main page (addresses, HQ labels)\n    const footer = take(fresh(uniq(mainLines.slice(-15))), 500);\n\n    const body = ['SIGNAL LINES:\\n' + signal, 'PAGE START:\\n' + head, 'ABOUT PAGE:\\n' + about, 'PAGE FOOTER:\\n' + footer].join('\\n---\\n');\n    ctx = `SEARCH RESULT TITLE: ${j.title || ''}\\nSEARCH RESULT SNIPPET: ${j.snippet || ''}\\n---\\n` + body.slice(0, MAX_CHARS);\n  }\n  return { json: { ...j, llm_context: ctx, llm_context_chars: ctx.length } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
-        -640
+        -992,
+        224
       ],
-      "id": "a32fef2b-134f-4545-b416-9cdd500b6348",
+      "id": "771c72aa-8e37-42ef-b976-36fc30b672c8",
       "name": "Build LLM Context"
     },
     {
@@ -360,10 +359,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        2400,
-        -656
+        -592,
+        208
       ],
-      "id": "5305b5f5-4dd2-48da-b5c4-779c31ca2671",
+      "id": "f42dc343-626d-45ba-a0bd-d64c7b66f6bb",
       "name": "Groq Extract",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -382,15 +381,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const src = $('Build LLM Context').all().filter(i => i.json.llm_context);\nconst out = [];\nconst BOILERPLATE = /all rights reserved|privacy policy|cookie|terms (&|and) conditions|copyright/i;\n\n// Fold look-alike characters so model output and page text compare equal:\n// non-breaking/typographic hyphens, curly quotes, odd spaces, zero-width characters.\nconst fold = ch => {\n  if (/[\\u2010-\\u2015\\u2212]/.test(ch)) return '-';\n  if (/[\\u2018\\u2019\\u201B\\u2032]/.test(ch)) return \"'\";\n  if (/[\\u201C\\u201D\\u201F\\u2033]/.test(ch)) return '\"';\n  if (/[\\u200B-\\u200D\\u2060\\uFEFF]/.test(ch)) return '';\n  if (/\\s/.test(ch)) return ' ';\n  return ch;\n};\n// folded, whitespace-collapsed text plus a map from each folded index back to the original index\nconst index = raw => {\n  const s = String(raw || '');\n  let t = ''; const map = []; let prevSpace = true;\n  for (let i = 0; i < s.length; i++) {\n    const f = fold(s[i]);\n    if (f === '') continue;\n    if (f === ' ') { if (prevSpace) continue; t += ' '; map.push(i); prevSpace = true; }\n    else { t += f; map.push(i); prevSpace = false; }\n  }\n  return { t, map };\n};\nconst foldText = raw => index(raw).t.trim();\nconst isSentence = n => /[.!?]$/.test(n) && n.split(' ').length >= 5;\n\n$input.all().forEach((item, idx) => {\n  const s = src[idx] ? src[idx].json : {};\n  let o;\n  try {\n    const content = item.json?.choices?.[0]?.message?.content;\n    if (!content) throw new Error(item.json?.error?.message || 'NO_GROQ_RESPONSE');\n    const txt = content.replace(/```json|```/g, '').trim();\n    o = JSON.parse(txt);\n  } catch (e) {\n    const msg = String(item.json?.error?.message || e.message);\n    out.push({ json: { ...s, extraction_status: 'EXTRACTION_FAILED', extraction_error: msg, retryable: /socket|TLS|ECONN|ETIMEDOUT|429|50\\d/i.test(msg) } });\n    return;\n  }\n\n  const hay = String(s.llm_context || '') + ' ' + String(s.page_text || '');\n  const srcIdx = index(hay);\n  const flags = [];\n\n  // Evidence: compare folded text, then store the PAGE's own characters (truly verbatim)\n  const snippets = [];\n  const dropped = [];\n  for (const q of (o.extracted_evidence_snippets || [])) {\n    const qn = foldText(q);\n    const p = qn ? srcIdx.t.indexOf(qn) : -1;\n    const ok = isSentence(qn) && !BOILERPLATE.test(qn) && p >= 0;\n    if (ok) {\n      const original = hay.slice(srcIdx.map[p], srcIdx.map[p + qn.length - 1] + 1).replace(/\\s+/g, ' ').trim();\n      if (!snippets.includes(original)) snippets.push(original);\n    } else {\n      flags.push('DROPPED_UNVERIFIED_SNIPPET');\n      dropped.push(String(q).slice(0, 200));\n    }\n  }\n\n  const dm = o.key_decision_maker || {};\n  let email = dm.public_business_email || null;\n  if (email && !hay.toLowerCase().includes(email.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); email = null; }\n\n  let name = dm.full_name || null;\n  if (name && !srcIdx.t.toLowerCase().includes(foldText(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }\n\n  let cemail = o.company_contact_email || null;\n  if (cemail && !hay.toLowerCase().includes(cemail.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); cemail = null; }\n\n  // Never trust model self-rated confidence: derive a cap from what was actually verified\n  let conf = o.confidence_level;\n  const verifiedFacts = [!!name, !!email, o.estimated_employee_range !== 'UNKNOWN', snippets.length >= 2].filter(Boolean).length;\n  if (verifiedFacts < 2) conf = 'LOW';\n  else if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';\n\n  out.push({ json: {\n    ...s,\n    extraction_status: 'EXTRACTED',\n    extraction_successful: !!o.extraction_successful,\n    company_name: o.company_name,\n    official_website: 'https://' + (s.normalized_domain || ''),\n    industry_sector: o.industry_sector,\n    headquarters_location: o.headquarters_location,\n    company_description: o.company_description,\n    estimated_employee_range: o.estimated_employee_range,\n    key_decision_maker: { full_name: name, designation: name ? dm.designation : null, public_business_email: email, linkedin_profile_url: null },\n    company_contact_email: cemail,\n    extracted_evidence_snippets: snippets,\n    dropped_snippets: dropped,\n    confidence_level: conf,\n    verification_flags: flags\n  } });\n});\nreturn out;"
+        "jsCode": "const src = $('Build LLM Context').all().filter(i => i.json.llm_context);\nconst out = [];\nconst BOILERPLATE = /all rights reserved|privacy policy|cookie|terms (&|and) conditions|copyright/i;\n\n// Fold look-alike characters so model output and page text compare equal:\n// non-breaking/typographic hyphens, curly quotes, odd spaces, zero-width characters.\nconst fold = ch => {\n  if (/[\\u2010-\\u2015\\u2212]/.test(ch)) return '-';\n  if (/[\\u2018\\u2019\\u201B\\u2032]/.test(ch)) return \"'\";\n  if (/[\\u201C\\u201D\\u201F\\u2033]/.test(ch)) return '\"';\n  if (/[\\u200B-\\u200D\\u2060\\uFEFF]/.test(ch)) return '';\n  if (/\\s/.test(ch)) return ' ';\n  return ch;\n};\n// folded, whitespace-collapsed text plus a map from each folded index back to the original index\nconst index = raw => {\n  const s = String(raw || '');\n  let t = ''; const map = []; let prevSpace = true;\n  for (let i = 0; i < s.length; i++) {\n    const f = fold(s[i]);\n    if (f === '') continue;\n    if (f === ' ') { if (prevSpace) continue; t += ' '; map.push(i); prevSpace = true; }\n    else { t += f; map.push(i); prevSpace = false; }\n  }\n  return { t, map };\n};\nconst foldText = raw => index(raw).t.trim();\nconst isSentence = n => /[.!?]$/.test(n) && n.split(' ').length >= 5;\n\n$input.all().forEach((item, idx) => {\n  const s = src[idx] ? src[idx].json : {};\n  let o;\n  try {\n    const content = item.json?.choices?.[0]?.message?.content;\n    if (!content) throw new Error(item.json?.error?.message || 'NO_GROQ_RESPONSE');\n    const txt = content.replace(/```json|```/g, '').trim();\n    o = JSON.parse(txt);\n  } catch (e) {\n    const er = item.json?.error;\n    const msg = String([er?.message, er?.description, er?.httpCode].filter(Boolean).join(' | ') || e.message);\n    out.push({ json: { ...s, extraction_status: 'EXTRACTION_FAILED', extraction_error: msg, retryable: /socket|TLS|ECONN|ETIMEDOUT|429|50\\d|rate limit|too many requests|spacing your requests|batching|overloaded|timed? ?out/i.test(msg) } });\n    return;\n  }\n\n  const hay = String(s.page_text || '') || String(s.llm_context || ''); // page text only: the search-result snippet is not the company's own words\n  const srcIdx = index(hay);\n  const flags = [];\n\n  // Evidence: compare folded text, then store the PAGE's own characters (truly verbatim)\n  const snippets = [];\n  const dropped = [];\n  for (const q of (o.extracted_evidence_snippets || [])) {\n    const qn = foldText(q);\n    const p = qn ? srcIdx.t.indexOf(qn) : -1;\n    const ok = isSentence(qn) && !BOILERPLATE.test(qn) && p >= 0;\n    if (ok) {\n      const original = hay.slice(srcIdx.map[p], srcIdx.map[p + qn.length - 1] + 1).replace(/\\s+/g, ' ').trim();\n      if (!snippets.includes(original)) snippets.push(original);\n    } else {\n      flags.push('DROPPED_UNVERIFIED_SNIPPET');\n      dropped.push(String(q).slice(0, 200));\n    }\n  }\n\n  const dm = o.key_decision_maker || {};\n  let email = dm.public_business_email || null;\n  if (email && !hay.toLowerCase().includes(email.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); email = null; }\n\n  let name = dm.full_name || null;\n  if (name && !srcIdx.t.toLowerCase().includes(foldText(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }\n\n  let cemail = o.company_contact_email || null;\n  if (cemail && !hay.toLowerCase().includes(cemail.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); cemail = null; }\n\n  // Never trust model self-rated confidence: derive a cap from what was actually verified\n  let conf = o.confidence_level;\n  const verifiedFacts = [!!name, !!email, o.estimated_employee_range !== 'UNKNOWN', snippets.length >= 2].filter(Boolean).length;\n  if (verifiedFacts < 2) conf = 'LOW';\n  else if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';\n\n  out.push({ json: {\n    ...s,\n    extraction_status: 'EXTRACTED',\n    extraction_successful: !!o.extraction_successful,\n    company_name: o.company_name,\n    official_website: 'https://' + (s.normalized_domain || ''),\n    industry_sector: o.industry_sector,\n    headquarters_location: o.headquarters_location,\n    company_description: o.company_description,\n    estimated_employee_range: o.estimated_employee_range,\n    key_decision_maker: { full_name: name, designation: name ? dm.designation : null, public_business_email: email, linkedin_profile_url: null },\n    company_contact_email: cemail,\n    extracted_evidence_snippets: snippets,\n    dropped_snippets: dropped,\n    confidence_level: conf,\n    verification_flags: flags\n  } });\n});\nreturn out;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2576,
-        -640
+        -416,
+        224
       ],
-      "id": "e481f1a8-bc0c-448b-b7b5-d4021747475b",
+      "id": "20379117-e20e-4b6e-80b0-ded0b2230da3",
       "name": "Verify Extraction"
     },
     {
@@ -421,10 +420,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2160,
-        -640
+        -832,
+        224
       ],
-      "id": "240bc8da-bdc2-42e4-8a83-7661cdf28a34",
+      "id": "83658014-8c8b-4388-8b2e-23706bcf898e",
       "name": "Has Context?"
     },
     {
@@ -434,10 +433,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1344,
-        -640
+        -1648,
+        224
       ],
-      "id": "e762661e-766d-4030-8f35-b9f7693cb0e2",
+      "id": "c068b91a-06ed-4f34-91cd-8f716759711f",
       "name": "Mark Unusable Pages"
     },
     {
@@ -468,10 +467,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2848,
-        -640
+        -144,
+        224
       ],
-      "id": "33765ef3-0fd4-4153-b113-07ad1f31619b",
+      "id": "f1e2ba7b-6559-4d29-be10-80cbd0e46d9b",
       "name": "Needs Retry?"
     },
     {
@@ -495,10 +494,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        2992,
-        -864
+        0,
+        0
       ],
-      "id": "d6d0375a-d4b6-43c0-b2a5-279984f37216",
+      "id": "b6fc05fa-c1a8-4ce1-86e3-bf6791037149",
       "name": "Groq Extract (fallback)",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -517,15 +516,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const src = $('Needs Retry?').all();\nconst out = [];\nconst norm = s => String(s || '').replace(/\\s+/g, ' ').trim();\nconst isSentence = q => /[.!?]$/.test(norm(q)) && norm(q).split(' ').length >= 5;\nconst BOILERPLATE = /all rights reserved|privacy policy|cookie|terms (&|and) conditions|copyright/i;\n\n$input.all().forEach((item, idx) => {\n  const s = src[idx] ? src[idx].json : {};\n  let o;\n  try {\n    const content = item.json?.choices?.[0]?.message?.content;\n    if (!content) throw new Error(item.json?.error?.message || 'NO_GROQ_RESPONSE');\n    const txt = content.replace(/```json|```/g, '').trim();\n    o = JSON.parse(txt);\n  } catch (e) {\n    const msg = String(item.json?.error?.message || e.message);\n    out.push({ json: { ...s, extraction_status: 'EXTRACTION_FAILED', extraction_error: msg, retryable: /socket|TLS|ECONN|ETIMEDOUT|429|50\\d/i.test(msg) } });\n    return;\n  }\n  const hay = String(s.llm_context || '') + ' ' + String(s.page_text || '');\n  const text = norm(hay);\n  const flags = [];\n\n  const snippets = (o.extracted_evidence_snippets || []).filter(q => {\n    const ok = isSentence(q) && !BOILERPLATE.test(q) && text.includes(norm(q));\n    if (!ok) flags.push('DROPPED_UNVERIFIED_SNIPPET');\n    return ok;\n  });\n\n  const dm = o.key_decision_maker || {};\n  let email = dm.public_business_email || null;\n  if (email && !hay.toLowerCase().includes(email.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); email = null; }\n\n  let name = dm.full_name || null;\n  if (name && !text.toLowerCase().includes(norm(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }\n\n  let cemail = o.company_contact_email || null;\n  if (cemail && !hay.toLowerCase().includes(cemail.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); cemail = null; }\n  // Never trust model self-rated confidence: derive a cap from what was actually verified\nlet conf = o.confidence_level;\nconst verifiedFacts = [!!name, !!email, o.estimated_employee_range !== 'UNKNOWN', snippets.length >= 2].filter(Boolean).length;\nif (verifiedFacts < 2) conf = 'LOW';\nelse if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';\n\n  out.push({ json: {\n    ...s,\n    model_used: 'gpt-oss-20b',\n    extraction_status: 'EXTRACTED',\n    retryable: false,\n    extraction_successful: !!o.extraction_successful,\n    company_name: o.company_name,\n    official_website: 'https://' + (s.normalized_domain || ''),\n    industry_sector: o.industry_sector,\n    headquarters_location: o.headquarters_location,\n    company_description: o.company_description,\n    estimated_employee_range: o.estimated_employee_range,\n    key_decision_maker: { full_name: name, designation: name ? dm.designation : null, public_business_email: email, linkedin_profile_url: null },\n    company_contact_email: cemail,\n    extracted_evidence_snippets: snippets,\n    confidence_level: conf,\n    verification_flags: flags\n  } });\n});\nreturn out;"
+        "jsCode": "const src = $('Needs Retry?').all();\nconst out = [];\nconst BOILERPLATE = /all rights reserved|privacy policy|cookie|terms (&|and) conditions|copyright/i;\n\n// Fold look-alike characters so model output and page text compare equal:\n// non-breaking/typographic hyphens, curly quotes, odd spaces, zero-width characters.\nconst fold = ch => {\n  if (/[\\u2010-\\u2015\\u2212]/.test(ch)) return '-';\n  if (/[\\u2018\\u2019\\u201B\\u2032]/.test(ch)) return \"'\";\n  if (/[\\u201C\\u201D\\u201F\\u2033]/.test(ch)) return '\"';\n  if (/[\\u200B-\\u200D\\u2060\\uFEFF]/.test(ch)) return '';\n  if (/\\s/.test(ch)) return ' ';\n  return ch;\n};\n// folded, whitespace-collapsed text plus a map from each folded index back to the original index\nconst index = raw => {\n  const s = String(raw || '');\n  let t = ''; const map = []; let prevSpace = true;\n  for (let i = 0; i < s.length; i++) {\n    const f = fold(s[i]);\n    if (f === '') continue;\n    if (f === ' ') { if (prevSpace) continue; t += ' '; map.push(i); prevSpace = true; }\n    else { t += f; map.push(i); prevSpace = false; }\n  }\n  return { t, map };\n};\nconst foldText = raw => index(raw).t.trim();\nconst isSentence = n => /[.!?]$/.test(n) && n.split(' ').length >= 5;\n\n$input.all().forEach((item, idx) => {\n  const s = src[idx] ? src[idx].json : {};\n  let o;\n  try {\n    const content = item.json?.choices?.[0]?.message?.content;\n    if (!content) throw new Error(item.json?.error?.message || 'NO_GROQ_RESPONSE');\n    const txt = content.replace(/```json|```/g, '').trim();\n    o = JSON.parse(txt);\n  } catch (e) {\n    const er = item.json?.error;\n    const msg = String([er?.message, er?.description, er?.httpCode].filter(Boolean).join(' | ') || e.message);\n    out.push({ json: { ...s, extraction_status: 'EXTRACTION_FAILED', extraction_error: msg, retryable: /socket|TLS|ECONN|ETIMEDOUT|429|50\\d|rate limit|too many requests|spacing your requests|batching|overloaded|timed? ?out/i.test(msg) } });\n    return;\n  }\n\n  const hay = String(s.page_text || '') || String(s.llm_context || ''); // page text only: the search-result snippet is not the company's own words\n  const srcIdx = index(hay);\n  const flags = [];\n\n  // Evidence: compare folded text, then store the PAGE's own characters (truly verbatim)\n  const snippets = [];\n  const dropped = [];\n  for (const q of (o.extracted_evidence_snippets || [])) {\n    const qn = foldText(q);\n    const p = qn ? srcIdx.t.indexOf(qn) : -1;\n    const ok = isSentence(qn) && !BOILERPLATE.test(qn) && p >= 0;\n    if (ok) {\n      const original = hay.slice(srcIdx.map[p], srcIdx.map[p + qn.length - 1] + 1).replace(/\\s+/g, ' ').trim();\n      if (!snippets.includes(original)) snippets.push(original);\n    } else {\n      flags.push('DROPPED_UNVERIFIED_SNIPPET');\n      dropped.push(String(q).slice(0, 200));\n    }\n  }\n\n  const dm = o.key_decision_maker || {};\n  let email = dm.public_business_email || null;\n  if (email && !hay.toLowerCase().includes(email.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); email = null; }\n\n  let name = dm.full_name || null;\n  if (name && !srcIdx.t.toLowerCase().includes(foldText(name).toLowerCase())) { flags.push('DROPPED_UNVERIFIED_NAME'); name = null; }\n\n  let cemail = o.company_contact_email || null;\n  if (cemail && !hay.toLowerCase().includes(cemail.toLowerCase())) { flags.push('DROPPED_UNVERIFIED_EMAIL'); cemail = null; }\n\n  // Never trust model self-rated confidence: derive a cap from what was actually verified\n  let conf = o.confidence_level;\n  const verifiedFacts = [!!name, !!email, o.estimated_employee_range !== 'UNKNOWN', snippets.length >= 2].filter(Boolean).length;\n  if (verifiedFacts < 2) conf = 'LOW';\n  else if (verifiedFacts < 3 && conf === 'HIGH') conf = 'MEDIUM';\n\n  out.push({ json: {\n    ...s,\n    model_used: 'gpt-oss-20b',\n    extraction_status: 'EXTRACTED',\n    retryable: false,\n    extraction_successful: !!o.extraction_successful,\n    company_name: o.company_name,\n    official_website: 'https://' + (s.normalized_domain || ''),\n    industry_sector: o.industry_sector,\n    headquarters_location: o.headquarters_location,\n    company_description: o.company_description,\n    estimated_employee_range: o.estimated_employee_range,\n    key_decision_maker: { full_name: name, designation: name ? dm.designation : null, public_business_email: email, linkedin_profile_url: null },\n    company_contact_email: cemail,\n    extracted_evidence_snippets: snippets,\n    dropped_snippets: dropped,\n    confidence_level: conf,\n    verification_flags: flags\n  } });\n});\nreturn out;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3168,
-        -864
+        176,
+        0
       ],
-      "id": "73cb5b78-f2aa-4d18-8b30-44266eb9aabd",
+      "id": "97e8c481-1a70-4b75-90db-da49502f39da",
       "name": "Verify Extraction (fallback)"
     },
     {
@@ -533,10 +532,10 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        3104,
-        -608
+        112,
+        256
       ],
-      "id": "fa7ba235-9cfc-4b1c-8c61-9abc8322f7b8",
+      "id": "ecaf24b9-077c-4404-9d44-31a5d548a80b",
       "name": "Merge Extractions"
     },
     {
@@ -546,23 +545,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3280,
-        -608
+        288,
+        256
       ],
-      "id": "f6572d65-68a0-40f0-87fd-2c58f5aa4e10",
+      "id": "069b8eba-2ca5-412e-931a-2185b06045f1",
       "name": "Validation Controller"
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst lc = s => String(s || '').toLowerCase();\nconst SENIOR = /(founder|co-founder|ceo|cto|chief|managing director|president|owner|vp|vice president|director)/i;\n\nreturn $input.all().map(item => {\n  const e = item.json;\n\n  if (e.validation_status !== 'VALIDATED') {\n    return { json: { ...e, lead_score: 0, sub_scores: {}, routing_target: 'QUARANTINE', score_reason: e.rejection_reason || 'NOT_VALIDATED' } };\n  }\n\n  const dm = e.key_decision_maker || {};\n\n  // Industry (30%): 100 direct match, 50 adjacent tech, 0 mismatch\n  const ind = lc(e.industry_sector + ' ' + e.company_description);\n  const target = lc(cfg.target_industry);\n  const words = target.split(/\\s+/).filter(w => w.length > 3);\n  const direct = ind.includes(target) || (words.length && words.every(w => ind.includes(w))) || /\\bit services\\b|software|technology|digital|web development/.test(ind);\n  const s_ind = direct ? 100 : (/(tech|data|cloud|ai|automation)/.test(ind) ? 50 : 0);\n\n  // ICP size (20%): 100 matches target, 50 unknown, 0 enterprise or solo\n  const size = e.estimated_employee_range;\n  let s_icp;\n  if (cfg.company_size_range !== 'ALL' && size === cfg.company_size_range) s_icp = 100;\n  else if (size === 'UNKNOWN') s_icp = 50;\n  else if (size === '501+' || size === '1-10') s_icp = 0;\n  else s_icp = 50;\n\n  // Geography (15%): 100 HQ in target, 50 regional office, 0 foreign\n  const geo = lc(cfg.target_geography);\n  const hq = lc(e.headquarters_location);\n  const indiaWords = /india|gujarat|maharashtra|pune|mumbai|bengaluru|bangalore|delhi|hyderabad|chennai|ahmedabad|punjab/;\n  let s_geo;\n  if (!hq) s_geo = 50;\n  else if (hq.includes(geo) || (geo === 'india' && indiaWords.test(hq))) s_geo = 100;\n  else if (indiaWords.test(hq)) s_geo = 50;\n  else s_geo = 0;\n\n  // Decision maker (15%): 100 supported senior, 50 supported other, 0 none or unsupported\n  let s_role = 0;\n  if (e.decision_maker_supported) s_role = SENIOR.test(dm.designation || '') ? 100 : 50;\n\n  // Evidence (20%): 100 for 2 or more verified quotes, 50 for one, 0 for none\n  const n = e.evidence_count || 0;\n  const s_evid = n >= 2 ? 100 : (n === 1 ? 50 : 0);\n\n  const lead_score = Math.round(0.30 * s_ind + 0.20 * s_icp + 0.15 * s_geo + 0.15 * s_role + 0.20 * s_evid);\n  const routing_target = lead_score >= cfg.min_lead_score ? 'MASTER' : (lead_score >= 60 ? 'REVIEW' : 'QUARANTINE');\n\n  return { json: { ...e, lead_score, sub_scores: { industry: s_ind, icp: s_icp, geography: s_geo, role: s_role, evidence: s_evid }, routing_target } };\n});"
+        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst lc = s => String(s || '').toLowerCase();\nconst SENIOR = /(founder|co-founder|ceo|cto|chief|managing director|president|owner|vp|vice president|director)/i;\n\nreturn $input.all().map(item => {\n  const e = item.json;\n\n  if (e.validation_status !== 'VALIDATED') {\n    return { json: { ...e, lead_score: 0, sub_scores: {}, routing_target: 'QUARANTINE', score_reason: e.rejection_reason || 'NOT_VALIDATED' } };\n  }\n\n  const dm = e.key_decision_maker || {};\n\n  // Industry (30%): 100 direct match, 50 adjacent tech, 0 mismatch\n  const ind = lc(e.industry_sector + ' ' + e.company_description);\n  const target = lc(cfg.target_industry);\n  const words = target.split(/\\s+/).filter(w => w.length > 3);\n  const direct = ind.includes(target) || (words.length && words.every(w => ind.includes(w))) || /\\bit services\\b|software|technology|digital|web development/.test(ind);\n  const s_ind = direct ? 100 : (/(tech|data|cloud|ai|automation)/.test(ind) ? 50 : 0);\n\n  // ICP size (20%): 100 matches target, 50 unknown, 0 enterprise or solo\n  const size = e.estimated_employee_range;\n  let s_icp;\n  if (cfg.company_size_range !== 'ALL' && size === cfg.company_size_range) s_icp = 100;\n  else if (size === 'UNKNOWN') s_icp = 50;\n  else if (size === '501+' || size === '1-10') s_icp = 0;\n  else s_icp = 50;\n\n  // Geography (15%): 100 HQ in target, 50 regional office, 0 foreign\n  const geo = lc(cfg.target_geography);\n  const hq = lc(e.headquarters_location);\n  const indiaWords = /india|gujarat|maharashtra|pune|mumbai|bengaluru|bangalore|delhi|hyderabad|chennai|ahmedabad|punjab/;\n  let s_geo;\n  if (!hq) {\n    // HQ not labelled: is the target place on the page at all (address, footer, contact)?\n    const place = geo.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    s_geo = place && new RegExp('\\\\b' + place + '\\\\b').test(lc(e.page_text)) ? 75 : 25;\n  }\n  else if (hq.includes(geo) || (geo === 'india' && indiaWords.test(hq))) s_geo = 100;\n  else if (indiaWords.test(hq)) s_geo = 50;\n  else s_geo = 0;\n\n  // Decision maker (15%): 100 supported senior, 50 supported other, 0 none or unsupported\n  let s_role = 0;\n  if (e.decision_maker_supported) s_role = SENIOR.test(dm.designation || '') ? 100 : 50;\n\n  // Evidence (20%): 100 for 2 or more verified quotes, 50 for one, 0 for none\n  const n = e.evidence_count || 0;\n  const s_evid = n >= 2 ? 100 : (n === 1 ? 50 : 0);\n\n  const lead_score = Math.round(0.30 * s_ind + 0.20 * s_icp + 0.15 * s_geo + 0.15 * s_role + 0.20 * s_evid);\n  const routing_target = lead_score >= cfg.min_lead_score ? 'MASTER' : (lead_score >= 60 ? 'REVIEW' : 'QUARANTINE');\n\n  return { json: { ...e, lead_score, sub_scores: { industry: s_ind, icp: s_icp, geography: s_geo, role: s_role, evidence: s_evid }, routing_target } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3344,
-        -368
+        352,
+        496
       ],
-      "id": "6eb7c46a-038d-4f52-8052-264e31690918",
+      "id": "d51ed22f-a093-4a72-84c3-6df35543f823",
       "name": "Scoring Engine"
     },
     {
@@ -667,23 +666,23 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        3904,
-        -384
+        912,
+        480
       ],
-      "id": "059f71af-c640-47a2-9c6c-95fa17f6127a",
+      "id": "b1055b97-1906-41e3-bf96-5fe0535d3269",
       "name": "Score Router"
     },
     {
       "parameters": {
-        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.seen = staticData.seen || {};\n\n// Hash: try SHA-256, fall back to a deterministic pure-JS hash\nfunction hashOf(s) {\n  try {\n    const c = require('crypto');\n    return 'sha256:' + c.createHash('sha256').update(s).digest('hex').slice(0, 32);\n  } catch (e) {\n    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;\n    for (let i = 0; i < s.length; i++) {\n      const ch = s.charCodeAt(i);\n      h1 = Math.imul(h1 ^ ch, 2654435761);\n      h2 = Math.imul(h2 ^ ch, 1597334677);\n    }\n    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);\n    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);\n    return 'h64:' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);\n  }\n}\n\n// Normalize: lowercase, strip www, strip common subdomains and country-level duplicates\nfunction canonicalDomain(d) {\n  let x = String(d || '').toLowerCase().trim().replace(/^www\\./, '');\n  x = x.replace(/^(m|mobile|portal|app|web|en|in)\\./, '');\n  return x;\n}\n\nconst batchSeen = new Set();\nreturn $input.all().map(item => {\n  const e = item.json;\n  const domain = canonicalDomain(e.normalized_domain);\n  if (!domain) return { json: { ...e, dedup_status: 'NO_DOMAIN' } };\n  const key = hashOf(domain);\n  const emailKey = e.verified_email ? hashOf(String(e.verified_email).toLowerCase()) : null;\n\n  const dupInRun = batchSeen.has(key);\n  const dupAcross = !!staticData.seen[key];\n  batchSeen.add(key);\n\n  if (dupInRun || dupAcross) {\n    return { json: { ...e, domain_hash: key, dedup_status: dupAcross ? 'DUPLICATE_PREVIOUS_RUN' : 'DUPLICATE_IN_RUN', routing_target: 'DUPLICATE', first_seen_at: staticData.seen[key] || null } };\n  }\n  // Register only leads that will be stored (not quarantine vetoes with no value)\n  staticData.seen[key] = new Date().toISOString();\n  return { json: { ...e, domain_hash: key, email_hash: emailKey, normalized_domain: domain, dedup_status: 'NEW' } };\n});"
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nstaticData.seen = staticData.seen || {};\n\n// Hash: try SHA-256, fall back to a deterministic pure-JS hash\nfunction hashOf(s) {\n  try {\n    const c = require('crypto');\n    return 'sha256:' + c.createHash('sha256').update(s).digest('hex').slice(0, 32);\n  } catch (e) {\n    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;\n    for (let i = 0; i < s.length; i++) {\n      const ch = s.charCodeAt(i);\n      h1 = Math.imul(h1 ^ ch, 2654435761);\n      h2 = Math.imul(h2 ^ ch, 1597334677);\n    }\n    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);\n    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);\n    return 'h64:' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);\n  }\n}\n\n// Normalize: lowercase, strip www, strip common subdomains and country-level duplicates\nfunction canonicalDomain(d) {\n  let x = String(d || '').toLowerCase().trim().replace(/^www\\./, '');\n  x = x.replace(/^(m|mobile|portal|app|web|en|in)\\./, '');\n  return x;\n}\n\nconst batchSeen = new Set();\nreturn $input.all().map(item => {\n  const e = item.json;\n  const domain = canonicalDomain(e.normalized_domain);\n  if (!domain) return { json: { ...e, dedup_status: 'NO_DOMAIN' } };\n  const key = hashOf(domain);\n  const emailKey = e.verified_email ? hashOf(String(e.verified_email).toLowerCase()) : null;\n\n  const dupInRun = batchSeen.has(key);\n  const dupAcross = !!staticData.seen[key];\n  batchSeen.add(key);\n\n  if (dupInRun || dupAcross) {\n    return { json: { ...e, domain_hash: key, dedup_status: dupInRun ? 'DUPLICATE_IN_RUN' : 'DUPLICATE_PREVIOUS_RUN', routing_target: 'DUPLICATE', first_seen_at: staticData.seen[key] || null } };\n  }\n  // Register only leads that will be stored (not quarantine vetoes with no value)\n  if (e.extraction_status === 'EXTRACTED') staticData.seen[key] = new Date().toISOString();\n  return { json: { ...e, domain_hash: key, email_hash: emailKey, normalized_domain: domain, dedup_status: 'NEW' } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3536,
-        -368
+        544,
+        496
       ],
-      "id": "e9a5bde7-ebe4-45ec-9bb0-fae826567fd2",
+      "id": "48f113c0-dfaa-47f3-939c-d562877dd3d6",
       "name": "Dedup Check"
     },
     {
@@ -715,7 +714,9 @@
             "discovery_time": "={{ $json.discovery_time }}",
             "scrape_status": "={{ $json.scrape_status }}"
           },
-          "matchingColumns": [],
+          "matchingColumns": [
+            "result_id"
+          ],
           "schema": [
             {
               "id": "result_id",
@@ -724,7 +725,8 @@
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
               "id": "campaign_id",
@@ -807,10 +809,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1008,
-        -832
+        -1984,
+        32
       ],
-      "id": "523d5053-d892-45a4-9128-c4b632f772cb",
+      "id": "b98463bf-aa1c-4d62-a3b6-7a7da4d741fe",
       "name": "Write Raw",
       "retryOnFail": false,
       "credentials": {
@@ -823,20 +825,20 @@
     },
     {
       "parameters": {
-        "jsCode": "const now = new Date().toISOString();\nreturn $input.all().map(i => {\n  const e = i.json;\n  const dm = e.key_decision_maker || {};\n  const id = String(e.domain_hash || e.result_id || '').replace(/[^a-z0-9]/gi, '').slice(-10).toUpperCase();\n  const score = e.lead_score ?? 0;\n  const route = e.routing_target || '';\n  const routeReason =\n    route === 'MASTER' ? 'score ' + score + ' meets the master threshold' :\n    route === 'REVIEW' ? 'score ' + score + ' in review band (60-79): needs human check' :\n    'score ' + score + ' below 60';\n  return { json: {\n    ...e,\n    review_id: 'REV-' + id, rejection_id: 'REJ-' + id,\n    master_lead_id: 'MLD-' + id,\n    contact_name: dm.full_name || '', designation: dm.designation || '',\n    sub_scores_text: JSON.stringify(e.sub_scores || {}),\n    evidence_text: (e.extracted_evidence_snippets || []).join(' | '),\n    flags_text: (e.verification_flags || []).join(','),\n    reason_text: e.score_reason || e.rejection_reason || routeReason,\n    now\n  } };\n});"
+        "jsCode": "const ist = d => new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 19).replace('T', ' ') + ' IST';\nconst nowDate = new Date();\nconst now = ist(nowDate);          // shown in the sheets (IST)\nconst now_utc = nowDate.toISOString(); // for machines\nreturn $input.all().map(i => {\n  const e = i.json;\n  const dm = e.key_decision_maker || {};\n  const id = String(e.domain_hash || e.result_id || '').replace(/[^a-z0-9]/gi, '').slice(-10).toUpperCase();\n  const score = e.lead_score ?? 0;\n  const route = e.routing_target || '';\n  const routeReason =\n    route === 'MASTER' ? 'score ' + score + ' meets the master threshold' :\n    route === 'REVIEW' ? 'score ' + score + ' in review band (60-79): needs human check' :\n    'score ' + score + ' below 60';\n  return { json: {\n    ...e,\n    review_id: 'REV-' + id, rejection_id: 'REJ-' + id,\n    master_lead_id: 'MLD-' + id,\n    contact_name: dm.full_name || '', designation: dm.designation || '',\n    sub_scores_text: JSON.stringify(e.sub_scores || {}),\n    evidence_text: (e.extracted_evidence_snippets || []).join(' | '),\n    flags_text: (e.verification_flags || []).join(','),\n    reason_text: e.score_reason || e.rejection_reason || routeReason,\n    now, now_utc\n  } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3712,
-        -368
+        720,
+        496
       ],
-      "id": "9ec96b28-4c57-4afa-b0d1-d33120f7f4e5",
+      "id": "20be7e37-f4ef-4cf3-b9f4-393f005ac725",
       "name": "Prepare Rows"
     },
     {
       "parameters": {
-        "operation": "appendOrUpdate",
+        "operation": "append",
         "documentId": {
           "__rl": true,
           "value": "1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0",
@@ -854,24 +856,22 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "normalized_domain": "={{ $('Prepare Rows').item.json.normalized_domain }}",
-            "master_lead_id": "={{ $('Prepare Rows').item.json.master_lead_id }}",
-            "contact_name": "={{ $('Prepare Rows').item.json.contact_name }}",
-            "company_name": "={{ $('Prepare Rows').item.json.company_name }}",
-            "designation": "={{ $('Prepare Rows').item.json.key_decision_maker.designation }}",
-            "verified_email": "={{ $('Prepare Rows').item.json.verified_email }}",
-            "email_status": "={{ $('Prepare Rows').item.json.email_status }}",
-            "lead_score": "={{ $('Prepare Rows').item.json.lead_score }}",
-            "evidence": "={{ $('Prepare Rows').item.json.evidence_text }}",
-            "campaign_id": "={{ $json.campaign_id }}",
+            "master_lead_id": "={{ $json.master_lead_id }}",
+            "normalized_domain": "={{ $json.normalized_domain }}",
+            "company_name": "={{ $json.company_name }}",
+            "contact_name": "={{ $json.contact_name }}",
+            "designation": "={{ $json.designation }}",
+            "verified_email": "={{ $json.verified_email }}",
+            "email_status": "={{ $json.email_status }}",
+            "lead_score": "={{ $json.lead_score }}",
+            "evidence": "={{ $json.evidence_text }}",
             "headquarters_location": "={{ $json.headquarters_location }}",
+            "human_approval": "PENDING",
             "outreach_status": "NOT_SENT",
-            "created_at": "={{ $json.now }}",
-            "Human_approved": "Pending"
+            "campaign_id": "={{ $json.campaign_id }}",
+            "created_at": "={{ $json.now }}"
           },
-          "matchingColumns": [
-            "normalized_domain"
-          ],
+          "matchingColumns": [],
           "schema": [
             {
               "id": "master_lead_id",
@@ -965,8 +965,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "Human_approved",
-              "displayName": "Human_approved",
+              "id": "human_approval",
+              "displayName": "human_approval",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -1010,18 +1010,17 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        4256,
-        -560
+        1568,
+        224
       ],
-      "id": "36070afe-a574-442d-9dde-e3093bc0dd16",
+      "id": "ce1c1a5b-2e0b-4898-b7e4-f017285ad0ec",
       "name": "Write Master",
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "uT2jRGfeeKlSPV53",
           "name": "Google Sheets account 5"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -1158,18 +1157,17 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        4272,
-        -384
+        1280,
+        480
       ],
-      "id": "903afa68-7975-48ed-bda8-9e3fbcd43dd8",
+      "id": "c1fbabf1-b407-49a1-a224-bf10014b5b36",
       "name": "Write Review",
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "uT2jRGfeeKlSPV53",
           "name": "Google Sheets account 5"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -1276,18 +1274,17 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        4272,
-        -208
+        1280,
+        656
       ],
-      "id": "4d08fe85-dbd3-42cb-8c31-69ba7b0334ca",
+      "id": "7fa19526-aa54-4e6f-a373-c0ecca57d8b1",
       "name": "Write Quarantine",
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "uT2jRGfeeKlSPV53",
           "name": "Google Sheets account 5"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -1296,10 +1293,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1520,
-        -640
+        -1472,
+        224
       ],
-      "id": "cf08e427-ce05-4dc5-ad94-b07050b4b096",
+      "id": "9aab2fcb-3fff-4d3f-905f-7a43b2f17dea",
       "name": "Add About URL"
     },
     {
@@ -1332,10 +1329,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1680,
-        -640
+        -1312,
+        224
       ],
-      "id": "a0be7239-db51-4be9-bf30-03a814580127",
+      "id": "2498d854-8af9-4b56-9f4c-b757a4af172a",
       "name": "Scrape About",
       "retryOnFail": false,
       "onError": "continueRegularOutput"
@@ -1347,409 +1344,62 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1824,
-        -640
+        -1168,
+        224
       ],
-      "id": "59efb20a-0c9a-412d-8d8e-cf54718ee9b8",
+      "id": "3a29bfa6-5e68-4478-805e-443f1abd3493",
       "name": "Merge About"
-    }
-  ],
-  "pinData": {
-    "SerpAPI Request": [
-      {
-        "json": {
-          "search_metadata": {
-            "id": "6addec08ee23184681a9b388",
-            "status": "Success",
-            "json_endpoint": "https://serpapi.com/searches/y8O0IbFPz_CR4xehViaUDWVAMDOTxVuzlXGXqj-b6us/6addec08ee23184681a9b388.json",
-            "markdown_endpoint": "https://serpapi.com/searches/y8O0IbFPz_CR4xehViaUDWVAMDOTxVuzlXGXqj-b6us/6addec08ee23184681a9b388.md",
-            "pixel_position_endpoint": "https://serpapi.com/searches/y8O0IbFPz_CR4xehViaUDWVAMDOTxVuzlXGXqj-b6us/6addec08ee23184681a9b388.json_with_pixel_position",
-            "created_at": "2026-10-25 11:46:16 UTC",
-            "processed_at": "2026-10-25 11:46:16 UTC",
-            "google_url": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&oq=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&hl=en&gl=in&sourceid=chrome&ie=UTF-8",
-            "raw_html_file": "https://serpapi.com/searches/y8O0IbFPz_CR4xehViaUDWVAMDOTxVuzlXGXqj-b6us/6addec08ee23184681a9b388.html",
-            "total_time_taken": 0.51
-          },
-          "search_parameters": {
-            "engine": "google",
-            "q": "\"web development agency\" Pune founder -site:linkedin.com -site:naukri.com -site:clutch.co",
-            "google_domain": "google.com",
-            "hl": "en",
-            "gl": "in",
-            "start": 0,
-            "device": "desktop"
-          },
-          "search_information": {
-            "query_displayed": "\"web development agency\" Pune founder -site:linkedin.com -site:naukri.com -site:clutch.co",
-            "total_results": 60000,
-            "time_taken_displayed": 0.27,
-            "organic_results_state": "Results for exact spelling"
-          },
-          "organic_results": [
-            {
-              "position": 1,
-              "title": "Top Web Development Companies in Pune - 2026 Reviews",
-              "link": "https://www.goodfirms.co/companies/web-development-agency/pune",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESeQHrOzAV6ogNNV59tX2uvImS2lccPaEBxBCoeStNsE1TYDLu3G_zzVZMwNks675HqJCCtrZSV1OozJXlptmYvKev1-K-EvsSFafvkxrnbUN-OecYRZ-S3VU_t340el-ai9o5MgmplB9GJHiOumMtFTLkHJ-vz2EWjAk&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBwQAQ&uoh=1",
-              "displayed_link": "https://www.goodfirms.co › Web Development",
-              "favicon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAeFBMVEVHcEzOpkzMplXQqFHTrV_Dm0XHoEnVrFWviDPQql3QqVvNqGHAmELMpE3LplrCnEa-l0LHoEm2jzq6kz7___-viTWrhC-lfibUrVPQqVDLpE7JoUzMpU3Xr1bNplGzjDncs1mmgC3e07_AqHuYchjOvZ2xnnnz8OuQA0ZPAAAAD3RSTlMAGvVUzEBxkqvC4tnrrewT_HqMAAAA4klEQVQ4jc3TyRaCMAwFUCaVQS2WJkEckBbh__9QUKiKrbpwYbbvnjS0wXF-UkGeb711nARBFEVBksRrzyuK41znh3y737CUl1ARIQDPUrbZFcfZAE4DyDggVQjlCBb_CUjBByAkvQElnYVAtIEMmBJCSJWhEaRS6GLGDqiF4uYZaBANWIbk6TVvyfYV_HzrgDZQStE2HWLWDlLVVNdSWS8KsX8Lgq8fa9y5yAbGlfMtwNNbHZuBr4FrBKv7f-G4BvCY94NOge9Mav4Elu40745Z3kH4GvcVjmBmzvtzwq6e4wuExjm6ZpAdIgAAAABJRU5ErkJggg.png",
-              "snippet": "The top-ranked firm is Grawlix Software Private Limited (5.0 stars, 18 verified reviews, $50 - $99/hr, founded 2016, Pune). Across the category, the median ...",
-              "snippet_highlighted_words": [
-                "founded",
-                "Pune"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "The top-ranked firm is Grawlix Software Private Limited (5.0 stars, 18 verified reviews, $50 - $99/hr, founded 2016, Pune). Across the category, the median ...",
-                  "source_info_link": "https://www.goodfirms.co/companies/web-development-agency/pune",
-                  "icon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAeFBMVEVHcEzOpkzMplXQqFHTrV_Dm0XHoEnVrFWviDPQql3QqVvNqGHAmELMpE3LplrCnEa-l0LHoEm2jzq6kz7___-viTWrhC-lfibUrVPQqVDLpE7JoUzMpU3Xr1bNplGzjDncs1mmgC3e07_AqHuYchjOvZ2xnnnz8OuQA0ZPAAAAD3RSTlMAGvVUzEBxkqvC4tnrrewT_HqMAAAA4klEQVQ4jc3TyRaCMAwFUCaVQS2WJkEckBbh__9QUKiKrbpwYbbvnjS0wXF-UkGeb711nARBFEVBksRrzyuK41znh3y737CUl1ARIQDPUrbZFcfZAE4DyDggVQjlCBb_CUjBByAkvQElnYVAtIEMmBJCSJWhEaRS6GLGDqiF4uYZaBANWIbk6TVvyfYV_HzrgDZQStE2HWLWDlLVVNdSWS8KsX8Lgq8fa9y5yAbGlfMtwNNbHZuBr4FrBKv7f-G4BvCY94NOge9Mav4Elu40745Z3kH4GvcVjmBmzvtzwq6e4wuExjm6ZpAdIgAAAABJRU5ErkJggg.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CrEBL2dvdG8_dXJsPUNBRVNlUUhyT3pBVkl2U05EUkVzN0F3bWh1XzBRYVF5QXRoamlrNzZCX2JsWGd3eC1QZVJVWlRicjQ3a3dFM3E3VTVyOHZLOThuRkNxdUNrc1JnVDdzckFYeDJJaW1mTUtZYV9hYXBQRl9EU3VkTnE2MjlTVE5rYVVpcDBxWk42WXNRai11akdsaURzRWw5WTg5UEpiUDBLblRoZmxTeGVsVjJ3cG44EgQaAggAGtYFEgIIABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJAsAUIABAAGAAgACoKCgN3ZWIViTWcQCoSCgtkZXZlbG9wbWVudBX4mJ9AKi4KBmFnZW5jeRX85K8_GgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUVjIaZQBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFYKTwD4aA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKxAS9nb3RvP3VybD1DQUVTZVFIck96QVZJdlNORFJFczdBd21odV8wUWFReUF0aGppazc2Ql9ibFhnd3gtUGVSVVpUYnI0N2t3RTNxN1U1cjh2Szk4bkZDcXVDa3NSZ1Q3c3JBWHgySWltZk1LWWFfYWFwUEZfRFN1ZE5xNjI5U1ROa2FVaXAwcVpONllzUWotdWpHbGlEc0VsOVk4OVBKYlAwS25UaGZsU3hlbFYyd3BuODo7VG9wIFdlYiBEZXZlbG9wbWVudCBDb21wYW5pZXMgaW4gPGI-UHVuZTwvYj4gLSAyMDI2IFJldmlld3NCsgFUaGUgdG9wLXJhbmtlZCBmaXJtIGlzIEdyYXdsaXggU29mdHdhcmUgUHJpdmF0ZSBMaW1pdGVkICg1LjAgc3RhcnMsIDE4IHZlcmlmaWVkIHJldmlld3MsICQ1MCAtICQ5OS9ociwgPGI-Zm91bmRlZDwvYj4gMjAxNiwgPGI-UHVuZTwvYj4pLiBBY3Jvc3MgdGhlIGNhdGVnb3J5LCB0aGUgbWVkaWFuJm5ic3A7Li4uIgIQAUgAWABoAA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CrEBL2dvdG8_dXJsPUNBRVNlUUhyT3pBVkl2U05EUkVzN0F3bWh1XzBRYVF5QXRoamlrNzZCX2JsWGd3eC1QZVJVWlRicjQ3a3dFM3E3VTVyOHZLOThuRkNxdUNrc1JnVDdzckFYeDJJaW1mTUtZYV9hYXBQRl9EU3VkTnE2MjlTVE5rYVVpcDBxWk42WXNRai11akdsaURzRWw5WTg5UEpiUDBLblRoZmxTeGVsVjJ3cG44EgQaAggAGtYFEgIIABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJAsAUIABAAGAAgACoKCgN3ZWIViTWcQCoSCgtkZXZlbG9wbWVudBX4mJ9AKi4KBmFnZW5jeRX85K8_GgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUVjIaZQBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFYKTwD4aA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKxAS9nb3RvP3VybD1DQUVTZVFIck96QVZJdlNORFJFczdBd21odV8wUWFReUF0aGppazc2Ql9ibFhnd3gtUGVSVVpUYnI0N2t3RTNxN1U1cjh2Szk4bkZDcXVDa3NSZ1Q3c3JBWHgySWltZk1LWWFfYWFwUEZfRFN1ZE5xNjI5U1ROa2FVaXAwcVpONllzUWotdWpHbGlEc0VsOVk4OVBKYlAwS25UaGZsU3hlbFYyd3BuODo7VG9wIFdlYiBEZXZlbG9wbWVudCBDb21wYW5pZXMgaW4gPGI-UHVuZTwvYj4gLSAyMDI2IFJldmlld3NCsgFUaGUgdG9wLXJhbmtlZCBmaXJtIGlzIEdyYXdsaXggU29mdHdhcmUgUHJpdmF0ZSBMaW1pdGVkICg1LjAgc3RhcnMsIDE4IHZlcmlmaWVkIHJldmlld3MsICQ1MCAtICQ5OS9ociwgPGI-Zm91bmRlZDwvYj4gMjAxNiwgPGI-UHVuZTwvYj4pLiBBY3Jvc3MgdGhlIGNhdGVnb3J5LCB0aGUgbWVkaWFuJm5ic3A7Li4uIgIQAUgAWABoAA",
-              "source": "Goodfirms",
-              "read_more_link": "https://www.goodfirms.co/companies/web-development-agency/pune#:~:text=The%20top%2Dranked%20firm%20is%20Grawlix,the%20median%20hourly%20rate%20is"
-            },
-            {
-              "position": 2,
-              "title": "Top 25+ WordPress Development Companies in Pune ...",
-              "link": "https://www.itorixinfotech.com/wordpress-development-companies-in-pune/",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESggEB6zswFXJAw72C75ma3I3NnTH-anLRVgcdxvWOGEp831XP804TmWdCKdg_X-vquSOK399A0AokZYLWZL7Zwbqp9WbhjbkhM3B2GsZCPOWPevI1HDMNHRFHZP_lPDCtSyaacxvWpPu8xCfLiAPsmDBpc2voDFxRDcRMrRfs1TTs0Gln&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBUQAQ&uoh=1",
-              "displayed_link": "https://www.itorixinfotech.com › Blog",
-              "favicon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y-mAAAAV1BMVEVHcEwViZgVjZkXjZsYPFocIU0sMWIPEy0mKVcQe40UeospLl4mKlkWhZIVhpUpLl0VgI4rMF4cdIUpL14qLl4tM2MWj5wUjJssMWErN2UBbYIPh5YcUXMowkbFAAAAFXRSTlMArt3mEiTvBjc-KduPUnOzMl4Z9NgmRGhmAAAAtUlEQVQokcXQ2RKCMAwF0LQU2WQTkxTw_7_TlDXI4KPet_bMnTYB-GHa9pKSG2L9xdAfrjJjlGGnLSciu5uPNVbExFaZU-hYQnazFO9KGzHifrW-26tJNenLB6yl5xP9Hys6rhh71G9WoiUP_aTppxoywOOsPqj60IM4d0SiOHfVm04MIpl1HIpFVTEKJrNwBk887TYYBwMoTrj2QqSr9wMlBcyWU5seiiUzb3aKoWsDPdg_8wY-3hCWF4yTjQAAAABJRU5ErkJggg.png",
-              "date": "17 Sept 2026",
-              "snippet": "Digital Mogli LLP. Overview: Pune-based digital and web development agency serving businesses with website and digital projects. Company Details.",
-              "snippet_highlighted_words": [
-                "Pune",
-                "web development agency"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "Digital Mogli LLP. Overview: Pune-based digital and web development agency serving businesses with website and digital projects. Company Details.",
-                  "source_info_link": "https://www.itorixinfotech.com/wordpress-development-companies-in-pune/",
-                  "icon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y-mAAAAV1BMVEVHcEwViZgVjZkXjZsYPFocIU0sMWIPEy0mKVcQe40UeospLl4mKlkWhZIVhpUpLl0VgI4rMF4cdIUpL14qLl4tM2MWj5wUjJssMWErN2UBbYIPh5YcUXMowkbFAAAAFXRSTlMArt3mEiTvBjc-KduPUnOzMl4Z9NgmRGhmAAAAtUlEQVQokcXQ2RKCMAwF0LQU2WQTkxTw_7_TlDXI4KPet_bMnTYB-GHa9pKSG2L9xdAfrjJjlGGnLSciu5uPNVbExFaZU-hYQnazFO9KGzHifrW-26tJNenLB6yl5xP9Hys6rhh71G9WoiUP_aTppxoywOOsPqj60IM4d0SiOHfVm04MIpl1HIpFVTEKJrNwBk887TYYBwMoTrj2QqSr9wMlBcyWU5seiiUzb3aKoWsDPdg_8wY-3hCWF4yTjQAAAABJRU5ErkJggg.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=Cr4BL2dvdG8_dXJsPUNBRVNnZ0VCNnpzd0ZjYzlybnRJZXBOWU9OVmpQRHcydlVHOEJVcVZZemNrWDVUaXBPanI1ZVpGejdPVjljcEQwYmdiTFVuV0JnVHZkMEwtbGxfUmllMTNNSkcxWEhEeXloZ2c3a1JhMlBaY0w4Ui0wTXRCdUJOaVVVcWRWdDQ0Sy1CSFFOa1lqWXNnVDBLeUF1c2dPNXlMQWdpbGR1eEZYdHJHMVNXM0V4SDRMSGdqUzk5bRIEGgIIABrSBRICCAAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQKwFCAAQABgAIAAqCgoDd2ViFWL84T8qEgoLZGV2ZWxvcG1lbnQVtWOuQCouCgZhZ2VuY3kVGn3cPxoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFThGo0AaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchUAAAAAGgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIyvgEvZ290bz91cmw9Q0FFU2dnRUI2enN3RmNjOXJudEllcE5ZT05WalBEdzJ2VUc4QlVxVll6Y2tYNVRpcE9qcjVlWkZ6N09WOWNwRDBiZ2JMVW5XQmdUdmQwTC1sbF9SaWUxM01KRzFYSER5eWhnZzdrUmEyUFpjTDhSLTBNdEJ1Qk5pVVVxZFZ0NDRLLUJIUU5rWWpZc2dUMEt5QXVzZ081eUxBZ2lsZHV4Rlh0ckcxU1czRXhINExIZ2pTOTltOj1Ub3AgMjUrIFdvcmRQcmVzcyBEZXZlbG9wbWVudCBDb21wYW5pZXMgaW4gPGI-UHVuZTwvYj4gKDIwMjYpQp8BRGlnaXRhbCBNb2dsaSBMTFAuIE92ZXJ2aWV3OiA8Yj5QdW5lPC9iPi1iYXNlZCBkaWdpdGFsIGFuZCA8Yj53ZWIgZGV2ZWxvcG1lbnQgYWdlbmN5PC9iPiBzZXJ2aW5nIGJ1c2luZXNzZXMgd2l0aCB3ZWJzaXRlIGFuZCBkaWdpdGFsIHByb2plY3RzLiBDb21wYW55IERldGFpbHMuIgIQAUgAWABoAA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=Cr4BL2dvdG8_dXJsPUNBRVNnZ0VCNnpzd0ZjYzlybnRJZXBOWU9OVmpQRHcydlVHOEJVcVZZemNrWDVUaXBPanI1ZVpGejdPVjljcEQwYmdiTFVuV0JnVHZkMEwtbGxfUmllMTNNSkcxWEhEeXloZ2c3a1JhMlBaY0w4Ui0wTXRCdUJOaVVVcWRWdDQ0Sy1CSFFOa1lqWXNnVDBLeUF1c2dPNXlMQWdpbGR1eEZYdHJHMVNXM0V4SDRMSGdqUzk5bRIEGgIIABrSBRICCAAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQKwFCAAQABgAIAAqCgoDd2ViFWL84T8qEgoLZGV2ZWxvcG1lbnQVtWOuQCouCgZhZ2VuY3kVGn3cPxoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFThGo0AaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchUAAAAAGgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIyvgEvZ290bz91cmw9Q0FFU2dnRUI2enN3RmNjOXJudEllcE5ZT05WalBEdzJ2VUc4QlVxVll6Y2tYNVRpcE9qcjVlWkZ6N09WOWNwRDBiZ2JMVW5XQmdUdmQwTC1sbF9SaWUxM01KRzFYSER5eWhnZzdrUmEyUFpjTDhSLTBNdEJ1Qk5pVVVxZFZ0NDRLLUJIUU5rWWpZc2dUMEt5QXVzZ081eUxBZ2lsZHV4Rlh0ckcxU1czRXhINExIZ2pTOTltOj1Ub3AgMjUrIFdvcmRQcmVzcyBEZXZlbG9wbWVudCBDb21wYW5pZXMgaW4gPGI-UHVuZTwvYj4gKDIwMjYpQp8BRGlnaXRhbCBNb2dsaSBMTFAuIE92ZXJ2aWV3OiA8Yj5QdW5lPC9iPi1iYXNlZCBkaWdpdGFsIGFuZCA8Yj53ZWIgZGV2ZWxvcG1lbnQgYWdlbmN5PC9iPiBzZXJ2aW5nIGJ1c2luZXNzZXMgd2l0aCB3ZWJzaXRlIGFuZCBkaWdpdGFsIHByb2plY3RzLiBDb21wYW55IERldGFpbHMuIgIQAUgAWABoAA",
-              "source": "Itorix Infotech",
-              "read_more_link": "https://www.itorixinfotech.com/wordpress-development-companies-in-pune/#:~:text=Digital%20Mogli%20LLP,Company%20Details"
-            },
-            {
-              "position": 3,
-              "title": "Web development Company In Pune | Best Website ...",
-              "link": "https://gigante.co.in/website-development-companies/",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESbwHrOzAVQ893zfFjl5KqqYNEAp1yRTkTMMca83TLgSw6WGsZ30ii9H6gJt0tpftxfqyqYOXcXHc1jmsWhqY4EYLrCZ5qwobSLTB1Z-igDOqeF6xeIb2ds6ZMG5RoKw_02hFCU3rPIoXD-fCvhQa58A&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBsQAQ&uoh=1",
-              "displayed_link": "https://gigante.co.in › website-development-companies",
-              "favicon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcBAMAAACAI8KnAAAALVBMVEVHcEwAc6YAc6YAc6YAc6YAc6UAc6YAc6YAc6YAdKUAcqUAc6YAc6YAc6YAc6X-yqo4AAAAD3RSTlMAa7CfLBr0_z7MCIPeU8DQTrytAAAAoElEQVR4AWOgKmBUMoYBFQYG1vRyOGhgYGBD8GYB1W4v39IBBSCtx4uBxKoF7OUXFoC45RXhQHUFbOUXGCBcRmRuei2DkR6C-7yIgYEDwRUvVxQURnA5QTYiuAzmYC47jMsQ4uLi0oDdP1yhIALObdM2yXyS-TBnX7bmBCB3I4-hwUGLiVITHtQJALkx51RO1r5WFJ0w4eQEFFNYAygLVQBAt0UNr3h53gAAAABJRU5ErkJggg.png",
-              "snippet": "Web PowerhouseWhy Gigante Technologies has been chosen as Pune's top web development agency. · Fast Loading Speed · E-commerce Integration · User-Centric Approach ...",
-              "snippet_highlighted_words": [
-                "Pune's",
-                "web development agency"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "Web PowerhouseWhy Gigante Technologies has been chosen as Pune's top web development agency. · Fast Loading Speed · E-commerce Integration · User-Centric Approach ...",
-                  "source_info_link": "https://gigante.co.in/website-development-companies/",
-                  "icon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcBAMAAACAI8KnAAAALVBMVEVHcEwAc6YAc6YAc6YAc6YAc6UAc6YAc6YAc6YAdKUAcqUAc6YAc6YAc6YAc6X-yqo4AAAAD3RSTlMAa7CfLBr0_z7MCIPeU8DQTrytAAAAoElEQVR4AWOgKmBUMoYBFQYG1vRyOGhgYGBD8GYB1W4v39IBBSCtx4uBxKoF7OUXFoC45RXhQHUFbOUXGCBcRmRuei2DkR6C-7yIgYEDwRUvVxQURnA5QTYiuAzmYC47jMsQ4uLi0oDdP1yhIALObdM2yXyS-TBnX7bmBCB3I4-hwUGLiVITHtQJALkx51RO1r5WFJ0w4eQEFFNYAygLVQBAt0UNr3h53gAAAABJRU5ErkJggg.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CqQBL2dvdG8_dXJsPUNBRVNid0hyT3pBVnYxTDdydUZSbndWRnc3MlRzc09KbmJSLXVIM3JuZlF4YUZ2R2ZKLTRGa2ktZ2c2Ti1qWXJmVGRudEtNR1htQzVXM3VYaVNZTWhfbjR3OEppeEcxaTdUTEpQQ25TS3hnVXd3TUZuc1hJRG9yMzV6U3pGZFZCUS1XVFFNaDRQLTBEalhhZlY3b0l2Nk5laUESBBoCCAAa5QUSABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJAwQUIABAAGAAgACoKCgN3ZWIVsfmlQCoSCgtkZXZlbG9wbWVudBVkq8hAKi4KBmFnZW5jeRUJjJY_GgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUV2oF1QBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFQAAAAAaA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKkAS9nb3RvP3VybD1DQUVTYndIck96QVZ2MUw3cnVGUm53VkZ3NzJUc3NPSm5iUi11SDNybmZReGFGdkdmSi00RmtpLWdnNk4tallyZlRkbnRLTUdYbUM1VzN1WGlTWU1oX240dzhKaXhHMWk3VExKUENuU0t4Z1V3d01GbnNYSURvcjM1elN6RmRWQlEtV1RRTWg0UC0wRGpYYWZWN29JdjZOZWlBOjlXZWIgZGV2ZWxvcG1lbnQgQ29tcGFueSBJbiA8Yj5QdW5lPC9iPiB8IEJlc3QgV2Vic2l0ZSAuLi5C0gFXZWIgUG93ZXJob3VzZVdoeSBHaWdhbnRlIFRlY2hub2xvZ2llcyBoYXMgYmVlbiBjaG9zZW4gYXMgPGI-UHVuZSYjMzk7czwvYj4gdG9wIDxiPndlYiBkZXZlbG9wbWVudCBhZ2VuY3k8L2I-LiAmbWlkZG90OyBGYXN0IExvYWRpbmcgU3BlZWQgJm1pZGRvdDsgRS1jb21tZXJjZSBJbnRlZ3JhdGlvbiAmbWlkZG90OyBVc2VyLUNlbnRyaWMgQXBwcm9hY2gmbmJzcDsuLi4iAhABSABYAGgA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CqQBL2dvdG8_dXJsPUNBRVNid0hyT3pBVnYxTDdydUZSbndWRnc3MlRzc09KbmJSLXVIM3JuZlF4YUZ2R2ZKLTRGa2ktZ2c2Ti1qWXJmVGRudEtNR1htQzVXM3VYaVNZTWhfbjR3OEppeEcxaTdUTEpQQ25TS3hnVXd3TUZuc1hJRG9yMzV6U3pGZFZCUS1XVFFNaDRQLTBEalhhZlY3b0l2Nk5laUESBBoCCAAa5QUSABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJAwQUIABAAGAAgACoKCgN3ZWIVsfmlQCoSCgtkZXZlbG9wbWVudBVkq8hAKi4KBmFnZW5jeRUJjJY_GgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUV2oF1QBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFQAAAAAaA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKkAS9nb3RvP3VybD1DQUVTYndIck96QVZ2MUw3cnVGUm53VkZ3NzJUc3NPSm5iUi11SDNybmZReGFGdkdmSi00RmtpLWdnNk4tallyZlRkbnRLTUdYbUM1VzN1WGlTWU1oX240dzhKaXhHMWk3VExKUENuU0t4Z1V3d01GbnNYSURvcjM1elN6RmRWQlEtV1RRTWg0UC0wRGpYYWZWN29JdjZOZWlBOjlXZWIgZGV2ZWxvcG1lbnQgQ29tcGFueSBJbiA8Yj5QdW5lPC9iPiB8IEJlc3QgV2Vic2l0ZSAuLi5C0gFXZWIgUG93ZXJob3VzZVdoeSBHaWdhbnRlIFRlY2hub2xvZ2llcyBoYXMgYmVlbiBjaG9zZW4gYXMgPGI-UHVuZSYjMzk7czwvYj4gdG9wIDxiPndlYiBkZXZlbG9wbWVudCBhZ2VuY3k8L2I-LiAmbWlkZG90OyBGYXN0IExvYWRpbmcgU3BlZWQgJm1pZGRvdDsgRS1jb21tZXJjZSBJbnRlZ3JhdGlvbiAmbWlkZG90OyBVc2VyLUNlbnRyaWMgQXBwcm9hY2gmbmJzcDsuLi4iAhABSABYAGgA",
-              "source": "Gigante Technologies",
-              "read_more_link": "https://gigante.co.in/website-development-companies/#:~:text=Web%20PowerhouseWhy%20Gigante%20Technologies%20has,Pune's%20top%20web%20development%20agency.&text=Fast%20Loading%20Speed&text=E%2Dcommerce%20Integration&text=User%2DCentric%20Approach"
-            },
-            {
-              "position": 4,
-              "title": "Top Web Development Companies in Pune | 2026",
-              "link": "https://www.designrush.com/agency/web-development-companies/in/pune",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESfgHrOzAV3ILpjiOa2BwNEyYam16qcx2CohRz2prWr0HbXfMdnScrjP-mjDkCz2Kzvo1b1nTPnE2tUqbtX8ze6VVESw9zy40-j1RUsZe-fJM57IPPEytpI9VBUdqJ_4atHZsUsiczTLbzwPclJ6VOqF1ir0BHloRWE0EsDCobyA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBoQAQ&uoh=1",
-              "displayed_link": "https://www.designrush.com › ... › India",
-              "favicon": "https://serpapi.com/images/i/_9j_4AAQSkZJRgABAQAAAQABAAD_2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys_RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3NTc3Nzc3Nzg3Nzc3MTc3Nzc3Nzc3NzU3NzU3Nzc3Nzc3Nzc2Nzc3Nzc3NzE1NzcyN__AABEIABwAHAMBEQACEQEDEQH_xAAYAAADAQEAAAAAAAAAAAAAAAAEBQYHAv_EACUQAAIBAwMEAgMAAAAAAAAAAAEDAgQRIQAFEgYiUWETMRRB4f_EABgBAQADAQAAAAAAAAAAAAAAAAUDBAYH_8QAJREAAQQCAQQBBQAAAAAAAAAAAQACAxEEITESQVHwcQUTYWLR_9oADAMBAAIRAxEAPwBbXv8AvOt5BGmiV10106zqOVbyiyK4onCnaDaJqe0wgfViSfWpMvNbhhnmxY_XdlVJpenhSiFESPIWINiNLud4VDJloIyMCRjUJKzk2QS_SIrqgcu4njfNvu3rUEMfhblxWibBQ1GwbfGW31iNz2nc0sNMTzQ0umIj4wYk2naAAyPqWY2yBlSsypKkaWSMIvgihe99t_nto2jZX9XKjuq9iTsNfGjNYuorp3bUrQrgpHLIhHJJ-_WLedMYOW7Kj6-mm8CzZNdz7zaHz5enV7QSk9gxqdztrPuftJqtpnOw1cjbQXRnupXfQfU25dMUdfQ1NBUvWE_kIXJcrqmbWJ8QN7k_q3s6C-qYEOa9kjXgG6Jvkf0e8IqeYNsqeYuse_8AMrw0sqiW_KyNvkuckfzSAMbW_bj4bqvCzGU9xPU7uj1J7BjUDnbRbn7UhEcmHlnTB0F0iZxpOI19ZJrGyqnFjl_EyZmbzhjtJ_YwMeh41TMMYAaGigbHz5-VnMyRw4KYoa10FQayc4qjxWJG4gPA8DVZzWtJIHKCnkc4UTwmiojgNVXHaOcTa__Z.jpeg",
-              "snippet": "Singorax is a SaaS-focused UI UX and full stack web development agency helping startups and growing businesses build scalable digital products. ... BuildOrbit ...",
-              "snippet_highlighted_words": [
-                "web development agency"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "Singorax is a SaaS-focused UI UX and full stack web development agency helping startups and growing businesses build scalable digital products. ... BuildOrbit ...",
-                  "source_info_link": "https://www.designrush.com/agency/web-development-companies/in/pune",
-                  "icon": "https://serpapi.com/images/i/_9j_4AAQSkZJRgABAQAAAQABAAD_2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys_RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3NTc3Nzc3Nzg3Nzc3MTc3Nzc3Nzc3NzU3NzU3Nzc3Nzc3Nzc2Nzc3Nzc3NzE1NzcyN__AABEIABwAHAMBEQACEQEDEQH_xAAYAAADAQEAAAAAAAAAAAAAAAAEBQYHAv_EACUQAAIBAwMEAgMAAAAAAAAAAAEDAgQRIQAFEgYiUWETMRRB4f_EABgBAQADAQAAAAAAAAAAAAAAAAUDBAYH_8QAJREAAQQCAQQBBQAAAAAAAAAAAQACAxEEITESQVHwcQUTYWLR_9oADAMBAAIRAxEAPwBbXv8AvOt5BGmiV10106zqOVbyiyK4onCnaDaJqe0wgfViSfWpMvNbhhnmxY_XdlVJpenhSiFESPIWINiNLud4VDJloIyMCRjUJKzk2QS_SIrqgcu4njfNvu3rUEMfhblxWibBQ1GwbfGW31iNz2nc0sNMTzQ0umIj4wYk2naAAyPqWY2yBlSsypKkaWSMIvgihe99t_nto2jZX9XKjuq9iTsNfGjNYuorp3bUrQrgpHLIhHJJ-_WLedMYOW7Kj6-mm8CzZNdz7zaHz5enV7QSk9gxqdztrPuftJqtpnOw1cjbQXRnupXfQfU25dMUdfQ1NBUvWE_kIXJcrqmbWJ8QN7k_q3s6C-qYEOa9kjXgG6Jvkf0e8IqeYNsqeYuse_8AMrw0sqiW_KyNvkuckfzSAMbW_bj4bqvCzGU9xPU7uj1J7BjUDnbRbn7UhEcmHlnTB0F0iZxpOI19ZJrGyqnFjl_EyZmbzhjtJ_YwMeh41TMMYAaGigbHz5-VnMyRw4KYoa10FQayc4qjxWJG4gPA8DVZzWtJIHKCnkc4UTwmiojgNVXHaOcTa__Z.jpeg"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CrgBL2dvdG8_dXJsPUNBRVNmZ0hyT3pBVkpPMElBeVNGa0c0RjNTUFFKQTl6Umw1WlNOZ2wzcFFLVWJMejBIZ3oxcUdINEtTTGl0b1dPd25QZUNwZ2g5THRXUDlGa3RKRlV5WklyOXVhOXpMVzdyQlJKQzhVa3ZlWEZrMTlZeEFJb2JEcXBnM2dqUHhCU2lFOS1lcGU5d09qcDNLQmttOGpYYXpoZlRtMUxlTEM3NDhrNEV5SUpwZ1YwdxIEGgIIABrRBRICCAAaACIAKgAyBggDEgJpbjoAQgQIARAASgBaAHIAegCCQKsFCAAQABgAIAAqCgoDd2ViFfldoUAqEgoLZGV2ZWxvcG1lbnQVbTW8QCouCgZhZ2VuY3kVckGCQBoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFZHSl0AaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchVIpzM-GgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIyuAEvZ290bz91cmw9Q0FFU2ZnSHJPekFWSk8wSUF5U0ZrRzRGM1NQUUpBOXpSbDVaU05nbDNwUUtVYkx6MEhnejFxR0g0S1NMaXRvV093blBlQ3BnaDlMdFdQOUZrdEpGVXlaSXI5dWE5ekxXN3JCUkpDOFVrdmVYRmsxOVl4QUlvYkRxcGczZ2pQeEJTaUU5LWVwZTl3T2pwM0tCa204alhhemhmVG0xTGVMQzc0OGs0RXlJSnBnVjB3OjNUb3AgV2ViIERldmVsb3BtZW50IENvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPiB8IDIwMjZCrgFTaW5nb3JheCBpcyBhIFNhYVMtZm9jdXNlZCBVSSBVWCBhbmQgZnVsbCBzdGFjayA8Yj53ZWIgZGV2ZWxvcG1lbnQgYWdlbmN5PC9iPiBoZWxwaW5nIHN0YXJ0dXBzIGFuZCBncm93aW5nIGJ1c2luZXNzZXMgYnVpbGQgc2NhbGFibGUgZGlnaXRhbCBwcm9kdWN0cy4gLi4uIEJ1aWxkT3JiaXQmbmJzcDsuLi4iAhABSABYAGgA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CrgBL2dvdG8_dXJsPUNBRVNmZ0hyT3pBVkpPMElBeVNGa0c0RjNTUFFKQTl6Umw1WlNOZ2wzcFFLVWJMejBIZ3oxcUdINEtTTGl0b1dPd25QZUNwZ2g5THRXUDlGa3RKRlV5WklyOXVhOXpMVzdyQlJKQzhVa3ZlWEZrMTlZeEFJb2JEcXBnM2dqUHhCU2lFOS1lcGU5d09qcDNLQmttOGpYYXpoZlRtMUxlTEM3NDhrNEV5SUpwZ1YwdxIEGgIIABrRBRICCAAaACIAKgAyBggDEgJpbjoAQgQIARAASgBaAHIAegCCQKsFCAAQABgAIAAqCgoDd2ViFfldoUAqEgoLZGV2ZWxvcG1lbnQVbTW8QCouCgZhZ2VuY3kVckGCQBoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFZHSl0AaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchVIpzM-GgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIyuAEvZ290bz91cmw9Q0FFU2ZnSHJPekFWSk8wSUF5U0ZrRzRGM1NQUUpBOXpSbDVaU05nbDNwUUtVYkx6MEhnejFxR0g0S1NMaXRvV093blBlQ3BnaDlMdFdQOUZrdEpGVXlaSXI5dWE5ekxXN3JCUkpDOFVrdmVYRmsxOVl4QUlvYkRxcGczZ2pQeEJTaUU5LWVwZTl3T2pwM0tCa204alhhemhmVG0xTGVMQzc0OGs0RXlJSnBnVjB3OjNUb3AgV2ViIERldmVsb3BtZW50IENvbXBhbmllcyBpbiA8Yj5QdW5lPC9iPiB8IDIwMjZCrgFTaW5nb3JheCBpcyBhIFNhYVMtZm9jdXNlZCBVSSBVWCBhbmQgZnVsbCBzdGFjayA8Yj53ZWIgZGV2ZWxvcG1lbnQgYWdlbmN5PC9iPiBoZWxwaW5nIHN0YXJ0dXBzIGFuZCBncm93aW5nIGJ1c2luZXNzZXMgYnVpbGQgc2NhbGFibGUgZGlnaXRhbCBwcm9kdWN0cy4gLi4uIEJ1aWxkT3JiaXQmbmJzcDsuLi4iAhABSABYAGgA",
-              "source": "DesignRush",
-              "read_more_link": "https://www.designrush.com/agency/web-development-companies/in/pune#:~:text=Singorax%20is%20a%20SaaS%2Dfocused%20UI,businesses%20build%20scalable%20digital%20products.&text=BuildOrbit%20Studio%20is%20a%20founder%2Dled"
-            },
-            {
-              "position": 5,
-              "title": "Web Development Agency in Pune",
-              "link": "https://magicworksitsolutions.com/services/web-development",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESdQHrOzAVd1DOo11TrkjkrjJP6a_CpbrffQtHpcnnnZrcvFC-Thz6un6jRKtF-Xb8Zb7aDuZObwCXOoTo512lpLG0z_W87E1tcfgcSRMW4hPFS_LosZL_dlJkzWQsh2dVrBXZLs3XiP6Ffo2f4Q8ZUM7GR6GU2Q&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBQQAQ&uoh=1",
-              "displayed_link": "https://magicworksitsolutions.com › Services",
-              "favicon": "https://serpapi.com/searches/6addec08ee23184681a9b388/images/UMBf_NMyEv6_teZadzJBbwlhgJkwZIXwH2PlzGYr0Yk.png",
-              "snippet": "A founder, marketing head, or product leader who cares about performance and ... Pune, Maharashtra, India. +91 97645 66644 sales@magicworksitsolutions ...",
-              "snippet_highlighted_words": [
-                "founder",
-                "Pune"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "A founder, marketing head, or product leader who cares about performance and ... Pune, Maharashtra, India. +91 97645 66644 sales@magicworksitsolutions ...",
-                  "source_info_link": "https://magicworksitsolutions.com/services/web-development",
-                  "icon": "https://serpapi.com/searches/6addec08ee23184681a9b388/images/UMBf_NMyEv6_teZadzJBb0W3Tl-RVp-E0A1bZufxhf220kb8enEANLXii-ITj0BR.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CqwBL2dvdG8_dXJsPUNBRVNkUUhyT3pBVjZJUXBlakdvbzBReVVpX3VLcTZFZndSanlDVDZEbEN3QVJkSkdJeC0tT1JaU2pFN0o5cUw3LUNjeWl2cTdzY0J1b2M3U044WFNXbGhBclF3RC1mckd6MDZpNkxJQjY0QmhvSWRpSzJYNzBWMXQyelpFUjd5ei1LcUhueG5MNW5aU3ZOTnhhMGVWUENLUUltenpNN1VMURIEGgIIABrKBRICCAAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQKQFCAAQABgAIAAqCgoDd2ViFdntrkAqEgoLZGV2ZWxvcG1lbnQVTuSaQCouCgZhZ2VuY3kVWPKOQBoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFZdfSUAaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchUPkxg-GgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIyrAEvZ290bz91cmw9Q0FFU2RRSHJPekFWNklRcGVqR29vMFF5VWlfdUtxNkVmd1JqeUNUNkRsQ3dBUmRKR0l4LS1PUlpTakU3SjlxTDctQ2N5aXZxN3NjQnVvYzdTTjhYU1dsaEFyUXdELWZyR3owNmk2TElCNjRCaG9JZGlLMlg3MFYxdDJ6WkVSN3l6LUtxSG54bkw1blpTdk5OeGEwZVZQQ0tRSW16ek03VUxROjk8Yj5XZWIgRGV2ZWxvcG1lbnQgQWdlbmN5PC9iPiBpbiA8Yj5QdW5lPC9iPiAtIE1hZ2ljV29ya3NCrQFBIDxiPmZvdW5kZXI8L2I-LCBtYXJrZXRpbmcgaGVhZCwgb3IgcHJvZHVjdCBsZWFkZXIgd2hvIGNhcmVzIGFib3V0IHBlcmZvcm1hbmNlIGFuZCAuLi4gPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhLCBJbmRpYS4gKzkxIDk3NjQ1IDY2NjQ0IHNhbGVzQG1hZ2ljd29ya3NpdHNvbHV0aW9ucyZuYnNwOy4uLiICEAFIAFgAaAA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CqwBL2dvdG8_dXJsPUNBRVNkUUhyT3pBVjZJUXBlakdvbzBReVVpX3VLcTZFZndSanlDVDZEbEN3QVJkSkdJeC0tT1JaU2pFN0o5cUw3LUNjeWl2cTdzY0J1b2M3U044WFNXbGhBclF3RC1mckd6MDZpNkxJQjY0QmhvSWRpSzJYNzBWMXQyelpFUjd5ei1LcUhueG5MNW5aU3ZOTnhhMGVWUENLUUltenpNN1VMURIEGgIIABrKBRICCAAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQKQFCAAQABgAIAAqCgoDd2ViFdntrkAqEgoLZGV2ZWxvcG1lbnQVTuSaQCouCgZhZ2VuY3kVWPKOQBoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFZdfSUAaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchUPkxg-GgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIyrAEvZ290bz91cmw9Q0FFU2RRSHJPekFWNklRcGVqR29vMFF5VWlfdUtxNkVmd1JqeUNUNkRsQ3dBUmRKR0l4LS1PUlpTakU3SjlxTDctQ2N5aXZxN3NjQnVvYzdTTjhYU1dsaEFyUXdELWZyR3owNmk2TElCNjRCaG9JZGlLMlg3MFYxdDJ6WkVSN3l6LUtxSG54bkw1blpTdk5OeGEwZVZQQ0tRSW16ek03VUxROjk8Yj5XZWIgRGV2ZWxvcG1lbnQgQWdlbmN5PC9iPiBpbiA8Yj5QdW5lPC9iPiAtIE1hZ2ljV29ya3NCrQFBIDxiPmZvdW5kZXI8L2I-LCBtYXJrZXRpbmcgaGVhZCwgb3IgcHJvZHVjdCBsZWFkZXIgd2hvIGNhcmVzIGFib3V0IHBlcmZvcm1hbmNlIGFuZCAuLi4gPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhLCBJbmRpYS4gKzkxIDk3NjQ1IDY2NjQ0IHNhbGVzQG1hZ2ljd29ya3NpdHNvbHV0aW9ucyZuYnNwOy4uLiICEAFIAFgAaAA",
-              "source": "MagicWorks IT Solutions",
-              "read_more_link": "https://magicworksitsolutions.com/services/web-development#:~:text=A%20founder%2C%20marketing%20head%2C%20or,enquiry%20generation%2C%20not%20just%20aesthetics.&text=Pune%2C%20Maharashtra%2C%20India,sales%40magicworksitsolutions.com"
-            },
-            {
-              "position": 6,
-              "title": "BIZmo - Web Development Agency",
-              "link": "https://startupintros.com/orgs/bizmo-web-development-agency",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESdgHrOzAVi5jy16mnXV5M3aKnyvp2O8lX9PgacB5wQiBmArpikMCOJcwIO1jL1F4KEaOvnVuT0LhDQg7_S2DsTWziGIv_lWEHRo7VWYx8UAFBSmBbTZ0hCHdDOJ-zC_Su0LgN_Tvc0PElG9CTyYIlJv4zWWu-wAE&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBcQAQ&uoh=1",
-              "displayed_link": "https://startupintros.com › Organizations",
-              "favicon": "https://serpapi.com/searches/6addec08ee23184681a9b388/images/UMBf_NMyEv6_teZadzJBb-LYc66iGn2Eda0UI2_KDzo.png",
-              "date": "25 Mar 2026",
-              "snippet": "Who founded BIZmo - Web Development Agency? BIZmo - Web Development Agency was founded by Moshe David (Founder). The OS for early-stage ...",
-              "snippet_highlighted_words": [
-                "founded",
-                "Web Development Agency",
-                "Web Development Agency",
-                "founded",
-                "Founder"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "Who founded BIZmo - Web Development Agency? BIZmo - Web Development Agency was founded by Moshe David (Founder). The OS for early-stage ...",
-                  "source_info_link": "https://startupintros.com/orgs/bizmo-web-development-agency",
-                  "icon": "https://serpapi.com/searches/6addec08ee23184681a9b388/images/UMBf_NMyEv6_teZadzJBbxyrOqDkkSEMmQBdvtQ3uD4iDelVLeQVneaEoWER92im.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=Cq0BL2dvdG8_dXJsPUNBRVNkZ0hyT3pBVjEtckpkcXUtdnNsdlZCT0t0SjB3M0w2Zk1lOVI3SzFJOHUxUnJfWHV1cXI2dmZNN2R4WU1mVk1qaUdGMXd2N3NKSVZFcW9TYWRkV1FGYnVHbDNhRUFLd3dLQTg5UnFXQ1BPa3BfX2Q0YVpLLUtBOE9qelYtZHVvX1Y2VnNoZDBPNU5ZdGhCTUJZaUlGLVpQeU9pMnhUWTASBBoCCAAa2gUSABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJAtgUIABAAGAAgACoKCgN3ZWIVPCvGQCoSCgtkZXZlbG9wbWVudBVy0NRAKi4KBmFnZW5jeRXMWr9AGgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUVkyy1PxoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFSpFjT8aA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKtAS9nb3RvP3VybD1DQUVTZGdIck96QVYxLXJKZHF1LXZzbHZWQk9LdEowdzNMNmZNZTlSN0sxSTh1MVJyX1h1dXFyNnZmTTdkeFlNZlZNamlHRjF3djdzSklWRXFvU2FkZFdRRmJ1R2wzYUVBS3d3S0E4OVJxV0NQT2twX19kNGFaSy1LQThPanpWLWR1b19WNlZzaGQwTzVOWXRoQk1CWWlJRi1aUHlPaTJ4VFkwOkRCSVptbyAtIDxiPldlYiBEZXZlbG9wbWVudCBBZ2VuY3k8L2I-OiBGdW5kaW5nLCBUZWFtICZhbXA7IEludmVzdG9yc0KzAVdobyA8Yj5mb3VuZGVkPC9iPiBCSVptbyAtIDxiPldlYiBEZXZlbG9wbWVudCBBZ2VuY3k8L2I-PyBCSVptbyAtIDxiPldlYiBEZXZlbG9wbWVudCBBZ2VuY3k8L2I-IHdhcyA8Yj5mb3VuZGVkPC9iPiBieSBNb3NoZSBEYXZpZCAoPGI-Rm91bmRlcjwvYj4pLiBUaGUgT1MgZm9yIGVhcmx5LXN0YWdlJm5ic3A7Li4uIgIQAUgAWABoAA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=Cq0BL2dvdG8_dXJsPUNBRVNkZ0hyT3pBVjEtckpkcXUtdnNsdlZCT0t0SjB3M0w2Zk1lOVI3SzFJOHUxUnJfWHV1cXI2dmZNN2R4WU1mVk1qaUdGMXd2N3NKSVZFcW9TYWRkV1FGYnVHbDNhRUFLd3dLQTg5UnFXQ1BPa3BfX2Q0YVpLLUtBOE9qelYtZHVvX1Y2VnNoZDBPNU5ZdGhCTUJZaUlGLVpQeU9pMnhUWTASBBoCCAAa2gUSABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJAtgUIABAAGAAgACoKCgN3ZWIVPCvGQCoSCgtkZXZlbG9wbWVudBVy0NRAKi4KBmFnZW5jeRXMWr9AGgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUVkyy1PxoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFSpFjT8aA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKtAS9nb3RvP3VybD1DQUVTZGdIck96QVYxLXJKZHF1LXZzbHZWQk9LdEowdzNMNmZNZTlSN0sxSTh1MVJyX1h1dXFyNnZmTTdkeFlNZlZNamlHRjF3djdzSklWRXFvU2FkZFdRRmJ1R2wzYUVBS3d3S0E4OVJxV0NQT2twX19kNGFaSy1LQThPanpWLWR1b19WNlZzaGQwTzVOWXRoQk1CWWlJRi1aUHlPaTJ4VFkwOkRCSVptbyAtIDxiPldlYiBEZXZlbG9wbWVudCBBZ2VuY3k8L2I-OiBGdW5kaW5nLCBUZWFtICZhbXA7IEludmVzdG9yc0KzAVdobyA8Yj5mb3VuZGVkPC9iPiBCSVptbyAtIDxiPldlYiBEZXZlbG9wbWVudCBBZ2VuY3k8L2I-PyBCSVptbyAtIDxiPldlYiBEZXZlbG9wbWVudCBBZ2VuY3k8L2I-IHdhcyA8Yj5mb3VuZGVkPC9iPiBieSBNb3NoZSBEYXZpZCAoPGI-Rm91bmRlcjwvYj4pLiBUaGUgT1MgZm9yIGVhcmx5LXN0YWdlJm5ic3A7Li4uIgIQAUgAWABoAA",
-              "source": "Startup Intros",
-              "read_more_link": "https://startupintros.com/orgs/bizmo-web-development-agency#:~:text=Who%20founded%20BIZmo%20%2D%20Web,from%20day%20zero%20to%20raise."
-            },
-            {
-              "position": 7,
-              "title": "What are best web development companies in Pune India?",
-              "link": "https://www.quora.com/What-are-best-web-development-companies-in-Pune-India",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAEShgEB6zswFTpNwgwLImCqNRaU-hX773YYtjH6O1dNajWge1aTgLA-ZEFrCmDfkaftE0sEQx4TDOCp4R__r1QJBV8Yz5VfG40rcJvAxqMGnwPwEOFVGjhNG3AAaX2AX-lMFxQrjidy1tUCzdELCg61K4pi0VH8CZ46Ue-_aCg2XXStex1kDzSqxw&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECCcQAQ&uoh=1",
-              "displayed_link": "30+ answers · 9 years ago",
-              "favicon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcBAMAAACAI8KnAAAAMFBMVEVHcEy4Kia5Kie5Kie5Kia5Kie5Kye5Kya5Kia5Kya5Kye5Kye5Kia5Kie5Kye4KybpLYg9AAAAEHRSTlMADBsoY5-1xoDS-f_mdeg3NaD4rAAAALBJREFUeAFjIAIwKhsJIHjMrullIQZwuc7Vu3fvmgGTFwfygPxCqOTs3WCwUwAiuXv3ntirp3fvhkh37d7XyMAg8Xr3CrCxs3cfAdF-u3eCDGdZvbsBxOXYvcsBSInu3iMANvH07kAgpbZ7K8SG6N1JQNJ8914I9_buYjQummI0o9AsgjjjCcwZEEfugToS1QuJKB7cPR_mfaiHP8ADBwyS4EFXDgKN8IA1BgEBAuEPAM0eYq2VgXsvAAAAAElFTkSuQmCC.png",
-              "snippet": "What are best web development companies in Pune India?",
-              "sitelinks": {
-                "list": [
-                  {
-                    "title": "What are the best web development companies in India?",
-                    "link": "https://www.quora.com/What-are-the-best-web-development-companies-in-India",
-                    "answer_count": 88,
-                    "date": "23 Oct 2013"
-                  },
-                  {
-                    "title": "Which is the best company in Pune for web designing ...",
-                    "link": "https://www.quora.com/Which-is-the-best-company-in-Pune-for-web-designing-and-developing?no_redirect=1",
-                    "answer_count": 52,
-                    "date": "17 Feb 2017"
-                  }
-                ]
-              },
-              "about_this_result": {
-                "source": {
-                  "description": "so here I am sharing some of the good web development agencies that can make this process easy for you to find out. Bacancy Technology ...",
-                  "source_info_link": "https://www.quora.com/What-are-best-web-development-companies-in-Pune-India",
-                  "icon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcBAMAAACAI8KnAAAAMFBMVEVHcEy4Kia5Kie5Kie5Kia5Kie5Kye5Kya5Kia5Kya5Kye5Kye5Kia5Kie5Kye4KybpLYg9AAAAEHRSTlMADBsoY5-1xoDS-f_mdeg3NaD4rAAAALBJREFUeAFjIAIwKhsJIHjMrullIQZwuc7Vu3fvmgGTFwfygPxCqOTs3WCwUwAiuXv3ntirp3fvhkh37d7XyMAg8Xr3CrCxs3cfAdF-u3eCDGdZvbsBxOXYvcsBSInu3iMANvH07kAgpbZ7K8SG6N1JQNJ8914I9_buYjQummI0o9AsgjjjCcwZEEfugToS1QuJKB7cPR_mfaiHP8ADBwyS4EFXDgKN8IA1BgEBAuEPAM0eYq2VgXsvAAAAAElFTkSuQmCC.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CsQBL2dvdG8_dXJsPUNBRVNoZ0VCNnpzd0ZkNUV5anh3bE1ST2FJZkpmM1JnY3gwZmZKMVg3LWIyRVhxQl84aWVhZUNIeGFyWkhZbE9DWS00QmNETWtkdE5sNDh6ajdFbU9oYjJzRUNGNko5NUJSSzlaSFo0aHFyVXl0M2FkT196Xzd2dkhtSmlXMlh2WHZrTFF6bW9RbFNmYmxIN0VrejRZVWIxTENzM0htLU9xWm1EZ0UtZ19yQXBXYVF5MXlzNTY3aFg3dxIEGgIIABrGBRIAGgAiACoAMgYIAxICaW46AEIECAEQAEoAWgByAHoAgkCiBQgAEAAYACAAKgoKA3dlYhVM_oJAKhIKC2RldmVsb3BtZW50FW7UgkAqLgoGYWdlbmN5FYLobT8aBmFnZW50cxoGYnVyZWF1GgVhZ2VudBoIYWdlbmNpZXMqbgoEcHVuZRWHtWRAGhRnZW87M2JjMjkwMDAwMDAwMDAwMBoUZ2VvOzNiYzJiMDAwMDAwMDAwMDAaFGdlbzszYmMyZDAwMDAwMDAwMDAwGhRnZW87M2JjMmYwMDAwMDAwMDAwMBoJaXY7cDtwdW5lKkAKB2ZvdW5kZXIV5rCaOxoDY2VvGgdmb3VuZGVkGghmb3VuZGVycxoIZm91bmRpbmcaB2hpc3RvcnkaBW93bmVyMsQBL2dvdG8_dXJsPUNBRVNoZ0VCNnpzd0ZkNUV5anh3bE1ST2FJZkpmM1JnY3gwZmZKMVg3LWIyRVhxQl84aWVhZUNIeGFyWkhZbE9DWS00QmNETWtkdE5sNDh6ajdFbU9oYjJzRUNGNko5NUJSSzlaSFo0aHFyVXl0M2FkT196Xzd2dkhtSmlXMlh2WHZrTFF6bW9RbFNmYmxIN0VrejRZVWIxTENzM0htLU9xWm1EZ0UtZ19yQXBXYVF5MXlzNTY3aFg3dzo9V2hhdCBhcmUgYmVzdCB3ZWIgZGV2ZWxvcG1lbnQgY29tcGFuaWVzIGluIDxiPlB1bmU8L2I-IEluZGlhP0KPAXNvIGhlcmUgSSBhbSBzaGFyaW5nIHNvbWUgb2YgdGhlIGdvb2Qgd2ViIGRldmVsb3BtZW50IGFnZW5jaWVzIHRoYXQgY2FuIG1ha2UgdGhpcyBwcm9jZXNzIGVhc3kgZm9yIHlvdSB0byBmaW5kIG91dC4gQmFjYW5jeSBUZWNobm9sb2d5Jm5ic3A7Li4uIgIQAUgAWABoAA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CsQBL2dvdG8_dXJsPUNBRVNoZ0VCNnpzd0ZkNUV5anh3bE1ST2FJZkpmM1JnY3gwZmZKMVg3LWIyRVhxQl84aWVhZUNIeGFyWkhZbE9DWS00QmNETWtkdE5sNDh6ajdFbU9oYjJzRUNGNko5NUJSSzlaSFo0aHFyVXl0M2FkT196Xzd2dkhtSmlXMlh2WHZrTFF6bW9RbFNmYmxIN0VrejRZVWIxTENzM0htLU9xWm1EZ0UtZ19yQXBXYVF5MXlzNTY3aFg3dxIEGgIIABrGBRIAGgAiACoAMgYIAxICaW46AEIECAEQAEoAWgByAHoAgkCiBQgAEAAYACAAKgoKA3dlYhVM_oJAKhIKC2RldmVsb3BtZW50FW7UgkAqLgoGYWdlbmN5FYLobT8aBmFnZW50cxoGYnVyZWF1GgVhZ2VudBoIYWdlbmNpZXMqbgoEcHVuZRWHtWRAGhRnZW87M2JjMjkwMDAwMDAwMDAwMBoUZ2VvOzNiYzJiMDAwMDAwMDAwMDAaFGdlbzszYmMyZDAwMDAwMDAwMDAwGhRnZW87M2JjMmYwMDAwMDAwMDAwMBoJaXY7cDtwdW5lKkAKB2ZvdW5kZXIV5rCaOxoDY2VvGgdmb3VuZGVkGghmb3VuZGVycxoIZm91bmRpbmcaB2hpc3RvcnkaBW93bmVyMsQBL2dvdG8_dXJsPUNBRVNoZ0VCNnpzd0ZkNUV5anh3bE1ST2FJZkpmM1JnY3gwZmZKMVg3LWIyRVhxQl84aWVhZUNIeGFyWkhZbE9DWS00QmNETWtkdE5sNDh6ajdFbU9oYjJzRUNGNko5NUJSSzlaSFo0aHFyVXl0M2FkT196Xzd2dkhtSmlXMlh2WHZrTFF6bW9RbFNmYmxIN0VrejRZVWIxTENzM0htLU9xWm1EZ0UtZ19yQXBXYVF5MXlzNTY3aFg3dzo9V2hhdCBhcmUgYmVzdCB3ZWIgZGV2ZWxvcG1lbnQgY29tcGFuaWVzIGluIDxiPlB1bmU8L2I-IEluZGlhP0KPAXNvIGhlcmUgSSBhbSBzaGFyaW5nIHNvbWUgb2YgdGhlIGdvb2Qgd2ViIGRldmVsb3BtZW50IGFnZW5jaWVzIHRoYXQgY2FuIG1ha2UgdGhpcyBwcm9jZXNzIGVhc3kgZm9yIHlvdSB0byBmaW5kIG91dC4gQmFjYW5jeSBUZWNobm9sb2d5Jm5ic3A7Li4uIgIQAUgAWABoAA",
-              "source": "Quora"
-            },
-            {
-              "position": 8,
-              "title": "Best Web Development Company in Pune, INDIA",
-              "link": "https://sanpurple.com/web-development-services",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESaQHrOzAVmX2rPYCuK60FjyLOb8hxrEvUTy-EnYDsS42sKuYYvFXXMc8YACgTlIHcuzVqRA8bry3nIQ7PV84f_vtv0XlnEIgvKdkJ3seODdACBdEUnL-Zrx4NmBraME-YcGbAFv8lZcZszw&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBgQAQ&uoh=1",
-              "displayed_link": "https://sanpurple.com › web-development-services",
-              "snippet": "We have been a leading web development agency with years of experience and proven expertise that startups, enterprises, and global brands trust. images- ...",
-              "snippet_highlighted_words": [
-                "web development agency"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "We have been a leading web development agency with years of experience and proven expertise that startups, enterprises, and global brands trust. images- ...",
-                  "source_info_link": "https://sanpurple.com/web-development-services"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CpwBL2dvdG8_dXJsPUNBRVNhUUhyT3pBVnNMbm9KOHROUFFrTTFHNC12UmtORWk4S25Ia1R0WnBpUUZUVGFzdlIwQWp1OHFteng5QVFEclY1NU5WdFhKbld1UnlNbmtjaG9xZ0Q5N1NURFBGZ21OdVdVcGRqanJZTFM2TS13TmYxdGRCb0hEX2d4bnFzR2M2UllXN3NPTHdZeHFzT19REgQaAggAGroFEgIIABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJAlAUIABAAGAAgACoKCgN3ZWIVxTy0QCoSCgtkZXZlbG9wbWVudBXC87lAKi4KBmFnZW5jeRUDgsY_GgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUV5KBtQBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFQAAAAAaA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKcAS9nb3RvP3VybD1DQUVTYVFIck96QVZzTG5vSjh0TlBRa00xRzQtdlJrTkVpOEtuSGtUdFpwaVFGVFRhc3ZSMEFqdThxbXp4OUFRRHJWNTVOVnRYSm5XdVJ5TW5rY2hvcWdEOTdTVERQRmdtTnVXVXBkampyWUxTNk0td05mMXRkQm9IRF9neG5xc0djNlJZVzdzT0x3WXhxc09fUTo-QmVzdCBXZWIgRGV2ZWxvcG1lbnQgQ29tcGFueSBpbiA8Yj5QdW5lPC9iPiwgSU5ESUEgfCBTYW5wdXJwbGVCqAFXZSBoYXZlIGJlZW4gYSBsZWFkaW5nIDxiPndlYiBkZXZlbG9wbWVudCBhZ2VuY3k8L2I-IHdpdGggeWVhcnMgb2YgZXhwZXJpZW5jZSBhbmQgcHJvdmVuIGV4cGVydGlzZSB0aGF0IHN0YXJ0dXBzLCBlbnRlcnByaXNlcywgYW5kIGdsb2JhbCBicmFuZHMgdHJ1c3QuIGltYWdlcy0mbmJzcDsuLi4iAhABSABYAGgA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CpwBL2dvdG8_dXJsPUNBRVNhUUhyT3pBVnNMbm9KOHROUFFrTTFHNC12UmtORWk4S25Ia1R0WnBpUUZUVGFzdlIwQWp1OHFteng5QVFEclY1NU5WdFhKbld1UnlNbmtjaG9xZ0Q5N1NURFBGZ21OdVdVcGRqanJZTFM2TS13TmYxdGRCb0hEX2d4bnFzR2M2UllXN3NPTHdZeHFzT19REgQaAggAGroFEgIIABoAIgAqADIGCAESAmluOgBCBAgBEABKAFoAcgB6AIJAlAUIABAAGAAgACoKCgN3ZWIVxTy0QCoSCgtkZXZlbG9wbWVudBXC87lAKi4KBmFnZW5jeRUDgsY_GgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUV5KBtQBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFQAAAAAaA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjKcAS9nb3RvP3VybD1DQUVTYVFIck96QVZzTG5vSjh0TlBRa00xRzQtdlJrTkVpOEtuSGtUdFpwaVFGVFRhc3ZSMEFqdThxbXp4OUFRRHJWNTVOVnRYSm5XdVJ5TW5rY2hvcWdEOTdTVERQRmdtTnVXVXBkampyWUxTNk0td05mMXRkQm9IRF9neG5xc0djNlJZVzdzT0x3WXhxc09fUTo-QmVzdCBXZWIgRGV2ZWxvcG1lbnQgQ29tcGFueSBpbiA8Yj5QdW5lPC9iPiwgSU5ESUEgfCBTYW5wdXJwbGVCqAFXZSBoYXZlIGJlZW4gYSBsZWFkaW5nIDxiPndlYiBkZXZlbG9wbWVudCBhZ2VuY3k8L2I-IHdpdGggeWVhcnMgb2YgZXhwZXJpZW5jZSBhbmQgcHJvdmVuIGV4cGVydGlzZSB0aGF0IHN0YXJ0dXBzLCBlbnRlcnByaXNlcywgYW5kIGdsb2JhbCBicmFuZHMgdHJ1c3QuIGltYWdlcy0mbmJzcDsuLi4iAhABSABYAGgA",
-              "source": "Sanpurple Inc",
-              "read_more_link": "https://sanpurple.com/web-development-services#:~:text=We%20have%20been%20a%20leading,enterprises%2C%20and%20global%20brands%20trust."
-            },
-            {
-              "position": 9,
-              "title": "Web Development Company in Pune: Services, Costs & ...",
-              "link": "https://awrange.com/blog/web-development-company-in-pune-2026/",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESeQHrOzAVUUehlZce2VRTmo6pFl_9Eh2ZpBroklz67J0iD7kOM8nVnFg2Jjq80LoaUaX_CjB8e6bHKZNscVmJToQcS1GuPW3Lk63PL0cI1X7Gcz84iYM-KBWmAbX7IKkNQqjHQbODdYENgUA7EzeN8BVHAeVfaSXI4z0&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBkQAQ&uoh=1",
-              "displayed_link": "https://awrange.com › Blog",
-              "favicon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y-mAAAAY1BMVEX____-ycD9h2_-4dv8JQD8akv8QAD8Yj_8KwD8RAz8LQD-w7j_8e78QgX8NwD9opH8PAD9fGL_6OP-2dH8TBv8Vi3-tqn8MwD9no39k3_9l4T9bk__9_X8cVP-zsX9qpv9eF3oFErJAAAApklEQVR4Ac3PVQLDIAwA0NVSgsOkLvc_5ZLOhf_i8LAc9p2yPG1FWRZJrADqJApEqRKmJaKB1ElCtC6BuSeVOnGvIPThFyI3zpKK4w-eKm7BIML52y5N01Kn-E_N5QutMZb7GhCN_bTOI0p-tuA_2f7jNwIZn-GI-IYDrRi_DceG0E8vm7dvLLfJwhM5P9EAgnzGHiRN8fni6ps6e12k6sav8bDDdAVmnQeJl4YYfAAAAABJRU5ErkJggg.png",
-              "date": "16 Sept 2026",
-              "snippet": "Any professional web development agency in Pune should have a ... 8, Aundh, Pune, Maharashtra 411067. Rahul KabraCEO, Awrange.",
-              "snippet_highlighted_words": [
-                "web development agency",
-                "Pune",
-                "Pune",
-                "CEO"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "Any professional web development agency in Pune should have a ... 8, Aundh, Pune, Maharashtra 411067. Rahul KabraCEO, Awrange.",
-                  "source_info_link": "https://awrange.com/blog/web-development-company-in-pune-2026/",
-                  "icon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y-mAAAAY1BMVEX____-ycD9h2_-4dv8JQD8akv8QAD8Yj_8KwD8RAz8LQD-w7j_8e78QgX8NwD9opH8PAD9fGL_6OP-2dH8TBv8Vi3-tqn8MwD9no39k3_9l4T9bk__9_X8cVP-zsX9qpv9eF3oFErJAAAApklEQVR4Ac3PVQLDIAwA0NVSgsOkLvc_5ZLOhf_i8LAc9p2yPG1FWRZJrADqJApEqRKmJaKB1ElCtC6BuSeVOnGvIPThFyI3zpKK4w-eKm7BIML52y5N01Kn-E_N5QutMZb7GhCN_bTOI0p-tuA_2f7jNwIZn-GI-IYDrRi_DceG0E8vm7dvLLfJwhM5P9EAgnzGHiRN8fni6ps6e12k6sav8bDDdAVmnQeJl4YYfAAAAABJRU5ErkJggg.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CrEBL2dvdG8_dXJsPUNBRVNlUUhyT3pBVnUwSVFBRDh6SGxuUi1jV0kwQ2FHUVVLWmNOOF9zQWdmZHN6aThaSGdDSFNkTGpKaktGQ3c5bjRaUDRSMkxpbnVBR3V6TUdIa1VfRU5CUzZ3WEVpd0I5THJBSnJDRzJ3YXNET0ZMUERRMldnVk56X2RYV0tWWG84eGlqSlgwU0tyekxUYS03SzhKd2NMX0JUQ21SZzhVRnc3bHhvEgQaAggAGrwFEgAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQJgFCAAQABgAIAAqCgoDd2ViFQb8s0AqEgoLZGV2ZWxvcG1lbnQVepbGQCouCgZhZ2VuY3kV0hoIQBoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFayIrUAaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchUAAAAAGgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIysQEvZ290bz91cmw9Q0FFU2VRSHJPekFWdTBJUUFEOHpIbG5SLWNXSTBDYUdRVUtaY044X3NBZ2Zkc3ppOFpIZ0NIU2RMakpqS0ZDdzluNFpQNFIyTGludUFHdXpNR0hrVV9FTkJTNndYRWl3QjlMckFKckNHMndhc0RPRkxQRFEyV2dWTnpfZFhXS1ZYbzh4aWpKWDBTS3J6TFRhLTdLOEp3Y0xfQlRDbVJnOFVGdzdseG86O1dlYiBEZXZlbG9wbWVudCBDb21wYW55IGluIDxiPlB1bmU8L2I-OiBTZXJ2aWNlcywgQ29zdHMgLi4uQpoBQW55IHByb2Zlc3Npb25hbCA8Yj53ZWIgZGV2ZWxvcG1lbnQgYWdlbmN5PC9iPiBpbiA8Yj5QdW5lPC9iPiBzaG91bGQgaGF2ZSBhIC4uLiA4LCBBdW5kaCwgPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhIDQxMTA2Ny4gUmFodWwgS2FicmE8Yj5DRU88L2I-LCBBd3JhbmdlLiICEAFIAFgAaAA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CrEBL2dvdG8_dXJsPUNBRVNlUUhyT3pBVnUwSVFBRDh6SGxuUi1jV0kwQ2FHUVVLWmNOOF9zQWdmZHN6aThaSGdDSFNkTGpKaktGQ3c5bjRaUDRSMkxpbnVBR3V6TUdIa1VfRU5CUzZ3WEVpd0I5THJBSnJDRzJ3YXNET0ZMUERRMldnVk56X2RYV0tWWG84eGlqSlgwU0tyekxUYS03SzhKd2NMX0JUQ21SZzhVRnc3bHhvEgQaAggAGrwFEgAaACIAKgAyBggBEgJpbjoAQgQIARAASgBaAHIAegCCQJgFCAAQABgAIAAqCgoDd2ViFQb8s0AqEgoLZGV2ZWxvcG1lbnQVepbGQCouCgZhZ2VuY3kV0hoIQBoGYWdlbnRzGgZidXJlYXUaBWFnZW50GghhZ2VuY2llcypuCgRwdW5lFayIrUAaFGdlbzszYmMyOTAwMDAwMDAwMDAwGhRnZW87M2JjMmIwMDAwMDAwMDAwMBoUZ2VvOzNiYzJkMDAwMDAwMDAwMDAaFGdlbzszYmMyZjAwMDAwMDAwMDAwGglpdjtwO3B1bmUqQAoHZm91bmRlchUAAAAAGgNjZW8aB2ZvdW5kZWQaCGZvdW5kZXJzGghmb3VuZGluZxoHaGlzdG9yeRoFb3duZXIysQEvZ290bz91cmw9Q0FFU2VRSHJPekFWdTBJUUFEOHpIbG5SLWNXSTBDYUdRVUtaY044X3NBZ2Zkc3ppOFpIZ0NIU2RMakpqS0ZDdzluNFpQNFIyTGludUFHdXpNR0hrVV9FTkJTNndYRWl3QjlMckFKckNHMndhc0RPRkxQRFEyV2dWTnpfZFhXS1ZYbzh4aWpKWDBTS3J6TFRhLTdLOEp3Y0xfQlRDbVJnOFVGdzdseG86O1dlYiBEZXZlbG9wbWVudCBDb21wYW55IGluIDxiPlB1bmU8L2I-OiBTZXJ2aWNlcywgQ29zdHMgLi4uQpoBQW55IHByb2Zlc3Npb25hbCA8Yj53ZWIgZGV2ZWxvcG1lbnQgYWdlbmN5PC9iPiBpbiA8Yj5QdW5lPC9iPiBzaG91bGQgaGF2ZSBhIC4uLiA4LCBBdW5kaCwgPGI-UHVuZTwvYj4sIE1haGFyYXNodHJhIDQxMTA2Ny4gUmFodWwgS2FicmE8Yj5DRU88L2I-LCBBd3JhbmdlLiICEAFIAFgAaAA",
-              "source": "Awrange",
-              "read_more_link": "https://awrange.com/blog/web-development-company-in-pune-2026/#:~:text=Any%20professional%20web%20development%20agency,live%20projects%20across%20different%20industries.&text=8%2C%20Aundh%2C%20Pune%2C%20Maharashtra%20411067.,Rahul%20KabraCEO%2C%20Awrange"
-            },
-            {
-              "position": 10,
-              "title": "Top 25 Ecommerce web development agencies based in ...",
-              "link": "https://revenuebase.ai/companies/ecommerce-web-development-agencies/india/pune",
-              "redirect_link": "https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=CAESiQEB6zswFRx0GXl3idkhGEt-IoRQsixYHz9hLBhfy_jXnv4bJ_TGqeax9T_zUYMrfeB32E2I9KlVWoM4BQU-9itYgijRG1LdEPhqxc_7Q4plYu3sIkiWYTViBVELS99v-3J5tWFvsJ17JjCvhXT53fAJfbXgSL1AnuIpQ3vc80mtJ5nIRS1ZndqV4Q&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQFnoECBYQAQ&uoh=1",
-              "displayed_link": "https://revenuebase.ai › ... › India",
-              "favicon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd-UAAABtUlEQVR4AbTWA2wmQRgG4DkrONtGeLZ9F-ds22aMY8MqrBvWZlybYa1YdffrfmneZDKZP39WSd6fu_uMZ8Sp1-f9hoJEKP0THfyO3-zGP_ZHlJgYIfzdE1DF3EJ9YxEilYKFQSoWYOa7MOiZKHYNpHCx3QSJOEBl7PF4oueC7KC-BwlAGZUxxCLquzmBIb81GPJgRpF3NVQxLsSJ9Zxi9_qQayf1oQZDCh2PUmAIUA2GFFsGEROo185DLsTFhSNakLNmbq4NUIMCQ5Ne1qDr5hq0YhbRytl3bYFAVUyLAhsDa22DWOa00wIoICm2QdHQsElUVVDzzx2kRc-uJtq2zJAxrq11EFhFGTGoosDQpBKKgWMNBIYoKDAEKAbNFkugiqloy819I3RoqXZaDB9b-8rytBDdnX2io420aHYKjUuLJx0IzBIoerqumCEOUBXj94Tvz4D6xRBftQsHCFTGAH4K-msABGYXjAWGMAhMBYHZBxvr38oYDxIGRWkRQDSpitkEezqnqhgio8Acgxg4Mqaiy_OzHrl-TOSH6kBucjsYQGsoMC9AxIT2TqooG10LiKa0qQ8AB9_nIHgUaacAAAAASUVORK5CYII.png",
-              "date": "21 Sept 2026",
-              "snippet": "The top 25 of 234 company matches for ecommerce web development agencies based in Pune, India, ordered by contacts tracked, with recorded ...",
-              "snippet_highlighted_words": [
-                "Pune"
-              ],
-              "about_this_result": {
-                "source": {
-                  "description": "The top 25 of 234 company matches for ecommerce web development agencies based in Pune, India, ordered by contacts tracked, with recorded ...",
-                  "source_info_link": "https://revenuebase.ai/companies/ecommerce-web-development-agencies/india/pune",
-                  "icon": "https://serpapi.com/images/i/iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAYAAAByDd-UAAABtUlEQVR4AbTWA2wmQRgG4DkrONtGeLZ9F-ds22aMY8MqrBvWZlybYa1YdffrfmneZDKZP39WSd6fu_uMZ8Sp1-f9hoJEKP0THfyO3-zGP_ZHlJgYIfzdE1DF3EJ9YxEilYKFQSoWYOa7MOiZKHYNpHCx3QSJOEBl7PF4oueC7KC-BwlAGZUxxCLquzmBIb81GPJgRpF3NVQxLsSJ9Zxi9_qQayf1oQZDCh2PUmAIUA2GFFsGEROo185DLsTFhSNakLNmbq4NUIMCQ5Ne1qDr5hq0YhbRytl3bYFAVUyLAhsDa22DWOa00wIoICm2QdHQsElUVVDzzx2kRc-uJtq2zJAxrq11EFhFGTGoosDQpBKKgWMNBIYoKDAEKAbNFkugiqloy819I3RoqXZaDB9b-8rytBDdnX2io420aHYKjUuLJx0IzBIoerqumCEOUBXj94Tvz4D6xRBftQsHCFTGAH4K-msABGYXjAWGMAhMBYHZBxvr38oYDxIGRWkRQDSpitkEezqnqhgio8Acgxg4Mqaiy_OzHrl-TOSH6kBucjsYQGsoMC9AxIT2TqooG10LiKa0qQ8AB9_nIHgUaacAAAAASUVORK5CYII.png"
-                },
-                "languages": [
-                  "en"
-                ],
-                "regions": [
-                  "IN"
-                ]
-              },
-              "about_page_link": "https://www.google.com/search/about-this-result?origin=www.google.com&req=CsgBL2dvdG8_dXJsPUNBRVNpUUVCNnpzd0ZYQzZZb0RuZ0ZvY3Blb25aNlhBOHNia3dEemowWUFBX1lmZGR0SVRqcXl6VGtiOFVyOHdfT3M1eEYzdlhfZVBoUWlyMjhmMzVYZFVTQU9QOTE5N1Y5dzN0QUVUcV8tNnYyZzZCSEVvdzc5VDl6NDVubEY0MmV5RmJCREY3WkY2cklaYnFZZHd0LU05Wm11QXRnQUhwUnh2WnhaR1Y2VE9wZmNzQVR5UEliSkdVQ0FPakESBBoCCAAazQUSABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJAqQUIABAAGAAgACoKCgN3ZWIVqHfEQCoSCgtkZXZlbG9wbWVudBUIVcRAKi4KBmFnZW5jeRXzB8JAGgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUV3DDEQBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFQAAAAAaA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjLIAS9nb3RvP3VybD1DQUVTaVFFQjZ6c3dGWEM2WW9EbmdGb2NwZW9uWjZYQThzYmt3RHpqMFlBQV9ZZmRkdElUanF5elRrYjhVcjh3X09zNXhGM3ZYX2VQaFFpcjI4ZjM1WGRVU0FPUDkxOTdWOXczdEFFVHFfLTZ2Mmc2QkhFb3c3OVQ5ejQ1bmxGNDJleUZiQkRGN1pGNnJJWmJxWWR3dC1NOVptdUF0Z0FIcFJ4dlp4WkdWNlRPcGZjc0FUeVBJYkpHVUNBT2pBOjZUb3AgMjUgRWNvbW1lcmNlIHdlYiBkZXZlbG9wbWVudCBhZ2VuY2llcyBiYXNlZCBpbiAuLi5CmQFUaGUgdG9wIDI1IG9mIDIzNCBjb21wYW55IG1hdGNoZXMgZm9yIGVjb21tZXJjZSB3ZWIgZGV2ZWxvcG1lbnQgYWdlbmNpZXMgYmFzZWQgaW4gPGI-UHVuZTwvYj4sIEluZGlhLCBvcmRlcmVkIGJ5IGNvbnRhY3RzIHRyYWNrZWQsIHdpdGggcmVjb3JkZWQmbmJzcDsuLi4iAhABSABYAGgA",
-              "about_page_serpapi_link": "https://serpapi.com/search.json?engine=google_about_this_result&google_domain=google.com&req_token=CsgBL2dvdG8_dXJsPUNBRVNpUUVCNnpzd0ZYQzZZb0RuZ0ZvY3Blb25aNlhBOHNia3dEemowWUFBX1lmZGR0SVRqcXl6VGtiOFVyOHdfT3M1eEYzdlhfZVBoUWlyMjhmMzVYZFVTQU9QOTE5N1Y5dzN0QUVUcV8tNnYyZzZCSEVvdzc5VDl6NDVubEY0MmV5RmJCREY3WkY2cklaYnFZZHd0LU05Wm11QXRnQUhwUnh2WnhaR1Y2VE9wZmNzQVR5UEliSkdVQ0FPakESBBoCCAAazQUSABoAIgAqADIGCAMSAmluOgBCBAgBEABKAFoAcgB6AIJAqQUIABAAGAAgACoKCgN3ZWIVqHfEQCoSCgtkZXZlbG9wbWVudBUIVcRAKi4KBmFnZW5jeRXzB8JAGgZhZ2VudHMaBmJ1cmVhdRoFYWdlbnQaCGFnZW5jaWVzKm4KBHB1bmUV3DDEQBoUZ2VvOzNiYzI5MDAwMDAwMDAwMDAaFGdlbzszYmMyYjAwMDAwMDAwMDAwGhRnZW87M2JjMmQwMDAwMDAwMDAwMBoUZ2VvOzNiYzJmMDAwMDAwMDAwMDAaCWl2O3A7cHVuZSpACgdmb3VuZGVyFQAAAAAaA2NlbxoHZm91bmRlZBoIZm91bmRlcnMaCGZvdW5kaW5nGgdoaXN0b3J5GgVvd25lcjLIAS9nb3RvP3VybD1DQUVTaVFFQjZ6c3dGWEM2WW9EbmdGb2NwZW9uWjZYQThzYmt3RHpqMFlBQV9ZZmRkdElUanF5elRrYjhVcjh3X09zNXhGM3ZYX2VQaFFpcjI4ZjM1WGRVU0FPUDkxOTdWOXczdEFFVHFfLTZ2Mmc2QkhFb3c3OVQ5ejQ1bmxGNDJleUZiQkRGN1pGNnJJWmJxWWR3dC1NOVptdUF0Z0FIcFJ4dlp4WkdWNlRPcGZjc0FUeVBJYkpHVUNBT2pBOjZUb3AgMjUgRWNvbW1lcmNlIHdlYiBkZXZlbG9wbWVudCBhZ2VuY2llcyBiYXNlZCBpbiAuLi5CmQFUaGUgdG9wIDI1IG9mIDIzNCBjb21wYW55IG1hdGNoZXMgZm9yIGVjb21tZXJjZSB3ZWIgZGV2ZWxvcG1lbnQgYWdlbmNpZXMgYmFzZWQgaW4gPGI-UHVuZTwvYj4sIEluZGlhLCBvcmRlcmVkIGJ5IGNvbnRhY3RzIHRyYWNrZWQsIHdpdGggcmVjb3JkZWQmbmJzcDsuLi4iAhABSABYAGgA",
-              "source": "RevenueBase"
-            }
-          ],
-          "related_searches": [
-            {
-              "block_position": 1,
-              "query": "Web development agency pune founder name",
-              "link": "https://www.google.com/search?sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&q=Web+development+agency+pune+founder+name&sa=X&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ1QJ6BAgKEAE",
-              "serpapi_link": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=Web+development+agency+pune+founder+name&start=0"
-            },
-            {
-              "block_position": 1,
-              "query": "Web development agency pune founder contact number",
-              "link": "https://www.google.com/search?sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&q=Web+development+agency+pune+founder+contact+number&sa=X&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ1QJ6BAgLEAE",
-              "serpapi_link": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=Web+development+agency+pune+founder+contact+number&start=0"
-            }
-          ],
-          "pagination": {
-            "current": 1,
-            "next": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=10&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8NMDegQIPBAW",
-            "other_pages": {
-              "2": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=10&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAE",
-              "3": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=20&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAG",
-              "4": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=30&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAI",
-              "5": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=40&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAK",
-              "6": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=50&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAM",
-              "7": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=60&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAO",
-              "8": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=70&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAQ",
-              "9": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=80&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAS",
-              "10": "https://www.google.com/search?q=%22web+development+agency%22+Pune+founder+-site:linkedin.com+-site:naukri.com+-site:clutch.co&sca_esv=6913058b0f03d14c&hl=en&gl=in&sxsrf=APpeQntw_rTvL0373DkAHGcL8Ev_YtGn4A:1792928776399&ei=COzdarqDGJuqptQP7_znwQg&start=90&sa=N&sstk=AS6-VmKh8EjnyC9iDIL6B9cAVUazXtxgwnamg5HoiUjeExCybJJ0QRzD2UApkw62E4hthpNHe0XvfsKg9il79XFcOP0gma3bet2yBA&ved=2ahUKEwi6p8yWjNWXAxUblYkEHW_-OYgQ8tMDegQIPBAU"
-            }
-          },
-          "serpapi_pagination": {
-            "current": 1,
-            "next_link": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=10",
-            "next": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=10",
-            "other_pages": {
-              "2": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=10",
-              "3": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=20",
-              "4": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=30",
-              "5": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=40",
-              "6": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=50",
-              "7": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=60",
-              "8": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=70",
-              "9": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=80",
-              "10": "https://serpapi.com/search.json?device=desktop&engine=google&gl=in&google_domain=google.com&hl=en&q=%22web+development+agency%22+Pune+founder+-site%3Alinkedin.com+-site%3Anaukri.com+-site%3Aclutch.co&start=90"
-            }
-          }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0",
+          "mode": "list",
+          "cachedResultName": "OpenLead",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 4344225,
+          "mode": "list",
+          "cachedResultName": "Stage_C_Master_Approved",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_x5XLF-dHChQN-ZDUZgh2JCeezQ8SF2A1GoLiI8amF0/edit#gid=4344225"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1120,
+        224
+      ],
+      "id": "3e97a504-0cd0-429b-9f1f-cc418544a98f",
+      "name": "Read Master Domains",
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "uT2jRGfeeKlSPV53",
+          "name": "Google Sheets account 5"
         }
       }
-    ]
-  },
+    },
+    {
+      "parameters": {
+        "jsCode": "// Only brand-new leads reach the Master append. Existing rows are never touched,\n// so human_approval, outreach_status and created_at can never be reset by a re-run.\nconst canon = d => String(d || '').toLowerCase().trim().replace(/^www\\./, '');\nconst existing = new Set();\nfor (const it of $input.all()) {\n  const d = canon(it.json.normalized_domain);\n  if (d) existing.add(d);\n}\nconst seen = new Set();\nconst out = [];\nfor (const it of $('Prepare Rows').all()) {\n  const e = it.json;\n  if (e.routing_target !== 'MASTER') continue;\n  const d = canon(e.normalized_domain);\n  if (!d || existing.has(d) || seen.has(d)) continue;\n  seen.add(d);\n  out.push({ json: e });\n}\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        224
+      ],
+      "id": "eed4f732-ec53-44d7-9c43-f3e1c5e549bd",
+      "name": "Drop Existing Master"
+    }
+  ],
+  "pinData": {},
   "connections": {
     "Intake Form": {
       "main": [
@@ -2034,11 +1684,6 @@
         ]
       ]
     },
-    "Write Raw": {
-      "main": [
-        []
-      ]
-    },
     "Prepare Rows": {
       "main": [
         [
@@ -2054,7 +1699,7 @@
       "main": [
         [
           {
-            "node": "Write Master",
+            "node": "Read Master Domains",
             "type": "main",
             "index": 0
           }
@@ -2107,6 +1752,28 @@
           }
         ]
       ]
+    },
+    "Read Master Domains": {
+      "main": [
+        [
+          {
+            "node": "Drop Existing Master",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drop Existing Master": {
+      "main": [
+        [
+          {
+            "node": "Write Master",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -2114,11 +1781,10 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "19fbb7b4-0286-42fb-a937-5a2ca1e817c6",
+  "versionId": "07ee3aaa-39da-488e-9749-eda523bedebf",
   "meta": {
-    "templateCredsSetupCompleted": true,
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
-  "id": "KuYvxaUX6vyL0HWh",
+  "id": "vFbWnrU4kEvUCNv4",
   "tags": []
 }
