@@ -18,12 +18,12 @@
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.5,
       "position": [
-        -3632,
-        432
+        -3168,
+        256
       ],
-      "id": "49bb3a8f-adf8-467b-b0d7-58ceb03b9884",
+      "id": "abe1daba-48b4-4b64-86c7-64dd7bf6759f",
       "name": "Intake Form",
-      "webhookId": "fb439c3f-2897-4e57-ac0e-11f2247701cc"
+      "webhookId": "f6ec914f-8413-421b-a14b-a19e53a57e58"
     },
     {
       "parameters": {
@@ -39,10 +39,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -3232,
-        336
+        -2768,
+        160
       ],
-      "id": "036524f8-bbb8-4d5a-9b1b-2f36d3e1b039",
+      "id": "c758ebc6-b674-45f6-aa15-c621369f3eb6",
       "name": "Parse Prompt (Groq)",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -61,10 +61,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3056,
-        336
+        -2592,
+        160
       ],
-      "id": "3196192a-90aa-4b70-a901-f2c4c7056508",
+      "id": "596eb59c-9428-42fc-bf99-bf10e840ba5c",
       "name": "Parameter Normalizer"
     },
     {
@@ -95,10 +95,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -3440,
-        432
+        -2976,
+        256
       ],
-      "id": "7c860a68-23b1-4297-8989-9befbf2f6c8e",
+      "id": "cc646015-7ec5-4ee3-924b-5a0b9d699b04",
       "name": "Prompt Not Empty"
     },
     {
@@ -129,10 +129,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -2896,
-        304
+        -2432,
+        128
       ],
-      "id": "6893263d-7023-4570-be1f-0daab12e6963",
+      "id": "ca672675-6432-41cf-8f19-c2d476e8ab34",
       "name": "Config Valid"
     },
     {
@@ -142,10 +142,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2704,
-        208
+        -2240,
+        32
       ],
-      "id": "0e69a476-605e-41c4-958e-baa94ad1b1b5",
+      "id": "ba7f857f-9f9b-40f5-9ea6-f0e8089dc3ab",
       "name": "Split Queries"
     },
     {
@@ -187,10 +187,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -2528,
-        208
+        -2064,
+        32
       ],
-      "id": "744f79e6-ea03-4126-9a04-d032325c138d",
+      "id": "9b94e5f9-3f3c-47d9-944e-a2fb8312c6e7",
       "name": "SerpAPI Request",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -204,15 +204,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const BLOCK = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com','youtube.com','wikipedia.org','glassdoor.com','indeed.com','naukri.com','justdial.com','ambitionbox.com','crunchbase.com','scribd.com','goodfirms.co','builtinpune.in','clutch.co','sulekha.com','indiamart.com','quora.com','medium.com','reddit.com','trustpilot.com','g2.com','topdevelopers.co','designrush.com','softwaresuggest.com','techbehemoths.com','startupintros.com','google.com','builtin.com','wellfound.com','coursera.org','edx.org','dev.to','fb.com','github.com','stackoverflow.com','stackexchange.com','udemy.com','geeksforgeeks.org','w3schools.com','paulgraham.com','click.in','tracxn.com','rockerstop.com'];\nconst LIST_TITLE = /\\b(list of|reviews?|directory)\\b|\\bcompanies\\b|\\b(top|best)\\s+\\d+|\\bfreelancers?\\b|\\bclassifieds?\\b/i;\nconst cfg = $('Split Queries').first().json;\nconst hash = s => { let h = 5381; for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };\nconst seen = new Set(), out = [], skipLog = [];\nlet errors = 0;\n\nouter: for (const item of $input.all()) {\n  if (out.length >= cfg.max_leads_limit) break;\n  if (item.json.error || !Array.isArray(item.json.organic_results)) { errors++; continue; }\n  const query = item.json.search_parameters?.q || '';\n  for (const r of item.json.organic_results) {\n    const m = String(r.link || '').match(/^(https?):\\/\\/([^\\/?#:]+)/i);\n    if (!m) { skipLog.push({ link: r.link, reason: 'BAD_URL' }); continue; }\n    const host = m[2].toLowerCase().replace(/^www\\./, '');\n    if (BLOCK.some(b => host === b || host.endsWith('.' + b))) { skipLog.push({ link: r.link, reason: 'BLOCKED_DOMAIN' }); continue; }\n    if (/\\.(edu|gov|mil)$|\\.(ac|edu|gov)\\.[a-z]{2}$/.test(host)) { skipLog.push({ link: r.link, reason: 'EDU_OR_GOV' }); continue; }\n    if (LIST_TITLE.test(r.title || '')) { skipLog.push({ link: r.link, reason: 'LIST_TITLE' }); continue; }\n    if (seen.has(host)) { skipLog.push({ link: r.link, reason: 'DUPLICATE_DOMAIN' }); continue; }\n    seen.add(host);\n    out.push({ json: {\n      result_id: 'RES-' + hash(host),\n      campaign_id: cfg.campaign_id,\n      source_url: r.link,\n      normalized_domain: host,\n      source_platform: 'google_serp',\n      title: r.title || null,\n      snippet: r.snippet || null,\n      query,\n      discovery_time: new Date(Date.now() + 330 * 60000).toISOString().slice(0, 19).replace('T', ' ') + ' IST',\n      scrape_status: 'PENDING'\n    } });\n    if (out.length >= cfg.max_leads_limit) break outer;\n  }\n}\nif (out.length === 0) return [{ json: { no_hits: true, errors, skipped: skipLog.length, skip_log: skipLog, campaign_id: cfg.campaign_id } }];\nreturn out;"
+        "jsCode": "const BLOCK = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com','youtube.com','wikipedia.org','glassdoor.com','indeed.com','naukri.com','justdial.com','ambitionbox.com','crunchbase.com','scribd.com','goodfirms.co','builtinpune.in','clutch.co','sulekha.com','indiamart.com','quora.com','medium.com','reddit.com','trustpilot.com','g2.com','topdevelopers.co','designrush.com','softwaresuggest.com','techbehemoths.com','startupintros.com','google.com','builtin.com','wellfound.com','coursera.org','edx.org','dev.to','fb.com','github.com','stackoverflow.com','stackexchange.com','udemy.com','geeksforgeeks.org','w3schools.com','paulgraham.com','click.in','tracxn.com','rockerstop.com','startuplanes.com','leadgenerationcompanies.in'];\nconst LIST_TITLE = /\\b(list of|reviews?|directory)\\b|\\bcompanies\\b|\\b(top|best)\\s+\\d+|\\bfreelancers?\\b|\\bclassifieds?\\b/i;\nconst cfg = $('Split Queries').first().json;\nconst hash = s => { let h = 5381; for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };\nconst seen = new Set(), out = [], skipLog = [];\nlet errors = 0;\n\nouter: for (const item of $input.all()) {\n  if (out.length >= cfg.max_leads_limit) break;\n  if (item.json.error || !Array.isArray(item.json.organic_results)) { errors++; continue; }\n  const query = item.json.search_parameters?.q || '';\n  for (const r of item.json.organic_results) {\n    const m = String(r.link || '').match(/^(https?):\\/\\/([^\\/?#:]+)/i);\n    if (!m) { skipLog.push({ link: r.link, reason: 'BAD_URL' }); continue; }\n    const host = m[2].toLowerCase().replace(/^www\\./, '');\n    if (BLOCK.some(b => host === b || host.endsWith('.' + b))) { skipLog.push({ link: r.link, reason: 'BLOCKED_DOMAIN' }); continue; }\n    if (/\\.(edu|gov|mil)$|\\.(ac|edu|gov)\\.[a-z]{2}$/.test(host)) { skipLog.push({ link: r.link, reason: 'EDU_OR_GOV' }); continue; }\n    if (LIST_TITLE.test(r.title || '')) { skipLog.push({ link: r.link, reason: 'LIST_TITLE' }); continue; }\n    if (seen.has(host)) { skipLog.push({ link: r.link, reason: 'DUPLICATE_DOMAIN' }); continue; }\n    seen.add(host);\n    out.push({ json: {\n      result_id: 'RES-' + hash(host),\n      campaign_id: cfg.campaign_id,\n      source_url: r.link,\n      normalized_domain: host,\n      source_platform: 'google_serp',\n      title: r.title || null,\n      snippet: r.snippet || null,\n      query,\n      discovery_time: new Date(Date.now() + 330 * 60000).toISOString().slice(0, 19).replace('T', ' ') + ' IST',\n      scrape_status: 'PENDING'\n    } });\n    if (out.length >= cfg.max_leads_limit) break outer;\n  }\n}\nif (out.length === 0) return [{ json: { no_hits: true, errors, skipped: skipLog.length, skip_log: skipLog, campaign_id: cfg.campaign_id } }];\nreturn out;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2176,
-        224
+        -1712,
+        48
       ],
-      "id": "93c2efe7-6c61-4013-b38c-8b87f7fa502e",
+      "id": "902ebee2-e176-4a45-a72d-281de58b9abb",
       "name": "Extract Hits"
     },
     {
@@ -242,10 +242,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -2368,
-        224
+        -1904,
+        48
       ],
-      "id": "07f0a639-6189-48b5-93b4-ba4869e08414",
+      "id": "fc1d7fc7-f0c9-4908-b7ba-1a9c89506e30",
       "name": "Is B2B?"
     },
     {
@@ -255,10 +255,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2368,
-        464
+        -1904,
+        288
       ],
-      "id": "465d7acf-3e62-4efb-a688-36cb24ad1f2a",
+      "id": "152d5a13-eecb-44a4-a3df-d925d7317bd9",
       "name": "Extract Reddit Hits"
     },
     {
@@ -291,10 +291,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -1984,
-        224
+        -1520,
+        48
       ],
-      "id": "1d7cbc5f-c134-4c27-98a5-804b19866374",
+      "id": "4d000f63-6c39-462d-8370-42b5b00aa6f8",
       "name": "Scrape Page",
       "retryOnFail": false,
       "onError": "continueRegularOutput"
@@ -306,10 +306,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1840,
-        224
+        -1376,
+        48
       ],
-      "id": "9696754f-1f6e-4c72-ad0b-abd761347526",
+      "id": "79c5293d-ffc3-4b74-acdb-f92377a23e0a",
       "name": "Clean Page Text"
     },
     {
@@ -319,10 +319,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2160,
-        464
+        -1696,
+        288
       ],
-      "id": "b94d0f9b-af4d-4417-b334-22c970ad25f6",
+      "id": "83d0d2e8-db4a-431c-b6a9-885ff84f298d",
       "name": "Reddit Text From SERP"
     },
     {
@@ -332,10 +332,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -992,
-        224
+        -528,
+        48
       ],
-      "id": "771c72aa-8e37-42ef-b976-36fc30b672c8",
+      "id": "153f9b08-51e1-46ac-98b3-ad77e5bb299f",
       "name": "Build LLM Context"
     },
     {
@@ -359,10 +359,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -592,
-        208
+        -128,
+        32
       ],
-      "id": "f42dc343-626d-45ba-a0bd-d64c7b66f6bb",
+      "id": "54712c95-c225-4396-888a-0cd05677da1b",
       "name": "Groq Extract",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -386,10 +386,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -416,
-        224
+        48,
+        48
       ],
-      "id": "20379117-e20e-4b6e-80b0-ded0b2230da3",
+      "id": "9484566e-3f4b-44c5-ac51-ffdc1b58dc27",
       "name": "Verify Extraction"
     },
     {
@@ -420,10 +420,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -832,
-        224
+        -368,
+        48
       ],
-      "id": "83658014-8c8b-4388-8b2e-23706bcf898e",
+      "id": "c31bf837-f14f-4e80-b84c-cab3a9e2ee45",
       "name": "Has Context?"
     },
     {
@@ -433,10 +433,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1648,
-        224
+        -1184,
+        48
       ],
-      "id": "c068b91a-06ed-4f34-91cd-8f716759711f",
+      "id": "272acbb3-37aa-4622-a433-62788652fc29",
       "name": "Mark Unusable Pages"
     },
     {
@@ -467,10 +467,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -144,
-        224
+        320,
+        48
       ],
-      "id": "f1e2ba7b-6559-4d29-be10-80cbd0e46d9b",
+      "id": "5742ac67-1ee9-4abd-929e-4ccc7db7c175",
       "name": "Needs Retry?"
     },
     {
@@ -494,10 +494,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        0,
-        0
+        464,
+        -176
       ],
-      "id": "b6fc05fa-c1a8-4ce1-86e3-bf6791037149",
+      "id": "3e59fd20-8553-40eb-ad5b-c13fcb1fc6a8",
       "name": "Groq Extract (fallback)",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -521,10 +521,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        176,
-        0
+        640,
+        -176
       ],
-      "id": "97e8c481-1a70-4b75-90db-da49502f39da",
+      "id": "bb1c47e7-5043-4ffc-ab28-ed8a2c74db8d",
       "name": "Verify Extraction (fallback)"
     },
     {
@@ -532,36 +532,36 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        112,
-        256
+        576,
+        80
       ],
-      "id": "ecaf24b9-077c-4404-9d44-31a5d548a80b",
+      "id": "f8fe2363-650a-4772-9be9-bbfc5c9fd31b",
       "name": "Merge Extractions"
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst FREE = ['gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com','proton.me','protonmail.com','icloud.com','rediffmail.com'];\nconst GENERIC = /^(info|contact|contacts|business|sales|support|hello|hi|admin|office|enquiry|enquiries|inquiry|inquiries|finance|hr|careers|jobs|whistleblower|marketing|accounts|billing|help|team|mail|webmaster)([._+-]|@)/i;\nconst RFC = /^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;\nconst hostOf = u => { const m = String(u || '').match(/^(?:https?:\\/\\/)?([^\\/?#:]+)/i); return m ? m[1].toLowerCase().replace(/^www\\./, '') : ''; };\n\n// brand label: awrange.com and awrange.co.in both -> \"awrange\"\nconst SLD = new Set(['co', 'com', 'org', 'net', 'ac', 'gov', 'edu']);\nconst brandOf = d => {\n  const p = String(d || '').toLowerCase().split('.');\n  if (p.length > 1) p.pop();\n  if (p.length > 1 && SLD.has(p[p.length - 1])) p.pop();\n  return p[p.length - 1] || '';\n};\n\n// role word variants, so \"Founder\" is supported by \"founded ... by\"\nconst ROLE_PATTERNS = [\n  [/found/i, /found(?:er|ed|ing)/i],\n  [/ceo|chief executive/i, /\\bceo\\b|chief executive/i],\n  [/cto|chief technology/i, /\\bcto\\b|chief technology/i],\n  [/coo|chief operating/i, /\\bcoo\\b|chief operating/i],\n  [/managing director|\\bmd\\b/i, /managing director|\\bmd\\b/i],\n  [/director/i, /director/i],\n  [/owner|proprietor/i, /owner|proprietor/i],\n  [/president/i, /president/i],\n  [/partner/i, /partner/i]\n];\nconst esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst roleRegexFor = desig => {\n  const hit = ROLE_PATTERNS.find(([k]) => k.test(desig));\n  if (hit) return hit[1];\n  return desig ? new RegExp(esc(desig), 'i') : null;\n};\nconst normText = s => String(s || '').replace(/[ \\t\\r\\f\\v]+/g, ' ');\n\n// name must appear verbatim in the page, with the role within 150 chars,\n// and not as a \"Name - Title\" testimonial attribution line\nconst supportedBy = (name, desig, text) => {\n  const hay = normText(text), lower = hay.toLowerCase();\n  const n = normText(name).trim().toLowerCase();\n  const re = roleRegexFor(String(desig || '').toLowerCase());\n  if (!n || !re) return false;\n  const testimonial = new RegExp('^\\\\s*' + esc(n) + '\\\\s*[-–—]\\\\s*', 'i');\n  let from = 0;\n  for (;;) {\n    const idx = lower.indexOf(n, from);\n    if (idx === -1) return false;\n    const ls = hay.lastIndexOf('\\n', idx) + 1;\n    let le = hay.indexOf('\\n', idx); if (le === -1) le = hay.length;\n    const line = hay.slice(ls, le);\n    const win = hay.slice(Math.max(0, idx - 150), idx + n.length + 150);\n    if (!testimonial.test(line) && re.test(win)) return true;\n    from = idx + n.length;\n  }\n};\n\nreturn $input.all().map(item => {\n  const e = item.json;\n  const errors = [];\n  const out = { ...e };\n  const flags = [...(e.verification_flags || [])];\n  let confidence = e.confidence_level;\n\n  // 1. Structural gate (fallback-model items are gated on company_name)\n  const usable = e.extraction_status === 'EXTRACTED' && !!e.company_name && (e.extraction_successful || e.model_used);\n  if (!usable) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: e.extraction_status === 'EXTRACTED' ? 'ERR_EMPTY_EXTRACTION' : 'ERR_NOT_EXTRACTED', rejection_veto: true } };\n  }\n\n  // 2. Domain from the scraped URL (never from the model)\n  const domain = hostOf(e.source_url) || e.normalized_domain || '';\n  if (!domain || !/\\.[a-z]{2,}$/i.test(domain)) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'ERR_MALFORMED_URL', rejection_veto: true } };\n  }\n  out.normalized_domain = domain;\n\n  // 3. Exclusion veto\n  const hay = ((e.company_name || '') + ' ' + (e.company_description || '') + ' ' + (e.industry_sector || '')).toLowerCase();\n  const hit = (cfg.exclusion_keywords || []).find(x => x && hay.includes(String(x).toLowerCase()));\n  if (hit) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'VETO_EXCLUSION: ' + hit, rejection_veto: true } };\n  }\n\n  // 4. Email classification (decision maker first, then company inbox)\n  const dm = e.key_decision_maker || {};\n  const dmEmail = (dm.public_business_email || '').trim();\n  const coEmail = (e.company_contact_email || '').trim();\n  const rawEmail = dmEmail || coEmail;\n  let fromCompany = !dmEmail && !!coEmail;\n  let verified_email = null, email_status = 'UNAVAILABLE';\n  if (rawEmail) {\n    if (!RFC.test(rawEmail) || /\\.\\./.test(rawEmail)) { email_status = 'INVALID_SYNTAX'; }\n    else {\n      verified_email = rawEmail;\n      const edomain = rawEmail.split('@')[1].toLowerCase();\n      if (FREE.includes(edomain)) email_status = 'FREE_WEBMAIL';\n      else if (GENERIC.test(rawEmail)) email_status = 'GENERIC_INBOX';\n      else email_status = 'SYNTAX_VALID';\n      if (email_status === 'SYNTAX_VALID' && brandOf(edomain) !== brandOf(domain)) email_status = 'DOMAIN_MISMATCH';\n\n      // a general inbox the model put in the decision-maker field is still a company inbox\n      const sameAsCompany = !!dmEmail && !!coEmail && dmEmail.toLowerCase() === coEmail.toLowerCase();\n      if (dmEmail && (email_status === 'GENERIC_INBOX' || sameAsCompany)) {\n        fromCompany = true;\n        flags.push('DM_EMAIL_WAS_COMPANY_INBOX');\n        if (confidence === 'HIGH') confidence = 'MEDIUM';\n      }\n      // an address reported as the company's general inbox is not a personal email\n      if (email_status === 'SYNTAX_VALID' && fromCompany) email_status = 'GENERIC_INBOX';\n    }\n  }\n\n  // 5. Decision maker counts only when the name appears verbatim next to the role in the page text\n  const evidenceText = [e.llm_context, e.page_text, (e.extracted_evidence_snippets || []).join('\\n')].join('\\n');\n  const dm_supported = !!(dm.full_name && dm.designation && supportedBy(dm.full_name, dm.designation, evidenceText));\n\n  return { json: {\n    ...out,\n    validation_status: 'VALIDATED',\n    verified_email, email_status,\n    email_source: rawEmail ? (fromCompany ? 'COMPANY_INBOX' : 'DECISION_MAKER') : null,\n    decision_maker_supported: dm_supported,\n    evidence_count: (e.extracted_evidence_snippets || []).length,\n    verification_flags: flags,\n    confidence_level: confidence,\n    validation_errors: errors,\n    validated_at: new Date().toISOString()\n  } };\n});"
+        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst FREE = ['gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com','proton.me','protonmail.com','icloud.com','rediffmail.com'];\nconst GENERIC = /^(info|contact|contacts|business|sales|support|hello|hi|admin|office|enquiry|enquiries|inquiry|inquiries|finance|hr|careers|jobs|whistleblower|marketing|accounts|billing|help|team|mail|webmaster)([._+-]|@)/i;\nconst RFC = /^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;\nconst hostOf = u => { const m = String(u || '').match(/^(?:https?:\\/\\/)?([^\\/?#:]+)/i); return m ? m[1].toLowerCase().replace(/^www\\./, '') : ''; };\n\n// brand label: awrange.com and awrange.co.in both -> \"awrange\"\nconst SLD = new Set(['co', 'com', 'org', 'net', 'ac', 'gov', 'edu']);\nconst brandOf = d => {\n  const p = String(d || '').toLowerCase().split('.');\n  if (p.length > 1) p.pop();\n  if (p.length > 1 && SLD.has(p[p.length - 1])) p.pop();\n  return p[p.length - 1] || '';\n};\n\n// role word variants, so \"Founder\" is supported by \"founded ... by\"\nconst ROLE_PATTERNS = [\n  [/found/i, /found(?:er|ed|ing)/i],\n  [/\\bceo\\b|chief executive/i, /\\bceo\\b|chief executive/i],\n  [/\\bcto\\b|chief technology/i, /\\bcto\\b|chief technology/i],\n  [/\\bcoo\\b|chief operating/i, /\\bcoo\\b|chief operating/i],\n  [/managing director|\\bmd\\b/i, /managing director|\\bmd\\b/i],\n  [/director/i, /director/i],\n  [/owner|proprietor/i, /owner|proprietor/i],\n  [/president/i, /president/i],\n  [/partner/i, /partner/i]\n];\nconst esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst roleRegexFor = desig => {\n  const hit = ROLE_PATTERNS.find(([k]) => k.test(desig));\n  if (hit) return hit[1];\n  return desig ? new RegExp(esc(desig), 'i') : null;\n};\nconst normText = s => String(s || '').replace(/[ \\t\\r\\f\\v]+/g, ' ');\n\n// name must appear verbatim in the page, with the role within 150 chars,\n// and not as a \"Name - Title\" testimonial attribution line\nconst supportedBy = (name, desig, text) => {\n  const hay = normText(text), lower = hay.toLowerCase();\n  const n = normText(name).trim().toLowerCase();\n  const re = roleRegexFor(String(desig || '').toLowerCase());\n  if (!n || !re) return false;\n  const testimonial = new RegExp('^\\\\s*' + esc(n) + '\\\\s*[-–—]\\\\s*', 'i');\n  let from = 0;\n  for (;;) {\n    const idx = lower.indexOf(n, from);\n    if (idx === -1) return false;\n    const ls = hay.lastIndexOf('\\n', idx) + 1;\n    let le = hay.indexOf('\\n', idx); if (le === -1) le = hay.length;\n    const line = hay.slice(ls, le);\n    const win = hay.slice(Math.max(0, idx - 150), idx + n.length + 150);\n    if (!testimonial.test(line) && re.test(win)) return true;\n    from = idx + n.length;\n  }\n};\n\nreturn $input.all().map(item => {\n  const e = item.json;\n  const errors = [];\n  const out = { ...e };\n  const flags = [...(e.verification_flags || [])];\n  let confidence = e.confidence_level;\n\n  // 1. Structural gate (fallback-model items are gated on company_name)\n  const usable = e.extraction_status === 'EXTRACTED' && !!e.company_name && (e.extraction_successful || e.model_used);\n  if (!usable) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: e.extraction_status === 'EXTRACTED' ? 'ERR_EMPTY_EXTRACTION' : (e.extraction_status === 'NO_CONTEXT' ? 'ERR_NO_PAGE_CONTENT: ' + [e.scrape_status, e.scrape_error].filter(Boolean).join(' / ') : 'ERR_NOT_EXTRACTED'), rejection_veto: true } };\n  }\n\n  // 2. Domain from the scraped URL (never from the model)\n  const domain = hostOf(e.source_url) || e.normalized_domain || '';\n  if (!domain || !/\\.[a-z]{2,}$/i.test(domain)) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'ERR_MALFORMED_URL', rejection_veto: true } };\n  }\n  out.normalized_domain = domain;\n\n  // 3. Exclusion veto\n  const hay = ((e.company_name || '') + ' ' + (e.company_description || '') + ' ' + (e.industry_sector || '')).toLowerCase();\n  const hit = (cfg.exclusion_keywords || []).find(x => x && hay.includes(String(x).toLowerCase()));\n  if (hit) {\n    return { json: { ...out, validation_status: 'REJECTED', rejection_reason: 'VETO_EXCLUSION: ' + hit, rejection_veto: true } };\n  }\n\n  // 4. Email classification (decision maker first, then company inbox)\n  const dm = e.key_decision_maker || {};\n  const dmEmail = (dm.public_business_email || '').trim();\n  const coEmail = (e.company_contact_email || '').trim();\n  const rawEmail = dmEmail || coEmail;\n  let fromCompany = !dmEmail && !!coEmail;\n  let verified_email = null, email_status = 'UNAVAILABLE';\n  if (rawEmail) {\n    if (!RFC.test(rawEmail) || /\\.\\./.test(rawEmail)) { email_status = 'INVALID_SYNTAX'; }\n    else {\n      verified_email = rawEmail;\n      const edomain = rawEmail.split('@')[1].toLowerCase();\n      if (FREE.includes(edomain)) email_status = 'FREE_WEBMAIL';\n      else if (GENERIC.test(rawEmail)) email_status = 'GENERIC_INBOX';\n      else email_status = 'SYNTAX_VALID';\n      if (email_status === 'SYNTAX_VALID' && brandOf(edomain) !== brandOf(domain)) email_status = 'DOMAIN_MISMATCH';\n\n      // a general inbox the model put in the decision-maker field is still a company inbox\n      const sameAsCompany = !!dmEmail && !!coEmail && dmEmail.toLowerCase() === coEmail.toLowerCase();\n      if (dmEmail && (email_status === 'GENERIC_INBOX' || sameAsCompany)) {\n        fromCompany = true;\n        flags.push('DM_EMAIL_WAS_COMPANY_INBOX');\n        if (confidence === 'HIGH') confidence = 'MEDIUM';\n      }\n      // an address reported as the company's general inbox is not a personal email\n      if (email_status === 'SYNTAX_VALID' && fromCompany) email_status = 'GENERIC_INBOX';\n    }\n  }\n\n  // 5. Decision maker counts only when the name appears verbatim next to the role in the page text\n  const evidenceText = [e.llm_context, e.page_text, (e.extracted_evidence_snippets || []).join('\\n')].join('\\n');\n  const dm_supported = !!(dm.full_name && dm.designation && supportedBy(dm.full_name, dm.designation, evidenceText));\n\n  // 6. Evidence back-fill: the model sometimes paraphrases and loses its quotes. Sentences copied from the page that\n  //    name the verified decision maker AND carry their role are verbatim by construction, so they may stand in.\n  let snippets = [...(e.extracted_evidence_snippets || [])];\n  if (dm_supported && snippets.length < 2) {\n    const nm = normText(dm.full_name).trim();\n    const nameRe = new RegExp('\\\\b' + esc(nm) + '\\\\b', 'i');\n    const roleRe = roleRegexFor(String(dm.designation || '').toLowerCase());\n    const BOILER = /all rights reserved|privacy policy|cookie|terms (&|and) conditions|copyright/i;\n    const have = new Set(snippets.map(x => normText(x).trim().toLowerCase()));\n    for (const raw of String(e.page_text || '').split(/(?<=[.!?])\\s+|\\n+/)) {\n      if (snippets.length >= 2) break;\n      const sent = normText(raw).trim();\n      if (sent.split(/\\s+/).length < 5 || sent.length > 300) continue;\n      if (!nameRe.test(sent) || !roleRe || !roleRe.test(sent) || BOILER.test(sent) || have.has(sent.toLowerCase())) continue;\n      snippets.push(sent); have.add(sent.toLowerCase());\n    }\n    if (snippets.length > (e.extracted_evidence_snippets || []).length) flags.push('EVIDENCE_BACKFILLED_FROM_PAGE');\n  }\n  out.extracted_evidence_snippets = snippets;\n\n  return { json: {\n    ...out,\n    validation_status: 'VALIDATED',\n    verified_email, email_status,\n    email_source: rawEmail ? (fromCompany ? 'COMPANY_INBOX' : 'DECISION_MAKER') : null,\n    decision_maker_supported: dm_supported,\n    evidence_count: snippets.length,\n    verification_flags: flags,\n    confidence_level: confidence,\n    validation_errors: errors,\n    validated_at: new Date().toISOString()\n  } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        288,
-        256
+        752,
+        80
       ],
-      "id": "069b8eba-2ca5-412e-931a-2185b06045f1",
+      "id": "4414af8a-0abd-4d87-b32a-d1ed78d7ef67",
       "name": "Validation Controller"
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst lc = s => String(s || '').toLowerCase();\nconst SENIOR = /(founder|co-founder|ceo|cto|chief|managing director|president|owner|vp|vice president|director)/i;\n\nreturn $input.all().map(item => {\n  const e = item.json;\n\n  if (e.validation_status !== 'VALIDATED') {\n    return { json: { ...e, lead_score: 0, sub_scores: {}, routing_target: 'QUARANTINE', score_reason: e.rejection_reason || 'NOT_VALIDATED' } };\n  }\n\n  const dm = e.key_decision_maker || {};\n\n  // Industry (30%): 100 direct match, 50 adjacent tech, 0 mismatch\n  const ind = lc(e.industry_sector + ' ' + e.company_description);\n  const target = lc(cfg.target_industry);\n  const words = target.split(/\\s+/).filter(w => w.length > 3);\n  const direct = ind.includes(target) || (words.length && words.every(w => ind.includes(w))) || /\\bit services\\b|software|technology|digital|web development/.test(ind);\n  const s_ind = direct ? 100 : (/(tech|data|cloud|ai|automation)/.test(ind) ? 50 : 0);\n\n  // ICP size (20%): 100 matches target, 50 unknown, 0 enterprise or solo\n  const size = e.estimated_employee_range;\n  let s_icp;\n  if (cfg.company_size_range !== 'ALL' && size === cfg.company_size_range) s_icp = 100;\n  else if (size === 'UNKNOWN') s_icp = 50;\n  else if (size === '501+' || size === '1-10') s_icp = 0;\n  else s_icp = 50;\n\n  // Geography (15%): 100 HQ in target, 50 regional office, 0 foreign\n  const geo = lc(cfg.target_geography);\n  const hq = lc(e.headquarters_location);\n  const indiaWords = /india|gujarat|maharashtra|pune|mumbai|bengaluru|bangalore|delhi|hyderabad|chennai|ahmedabad|punjab/;\n  let s_geo;\n  if (!hq) {\n    // HQ not labelled: is the target place on the page at all (address, footer, contact)?\n    const place = geo.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    s_geo = place && new RegExp('\\\\b' + place + '\\\\b').test(lc(e.page_text)) ? 75 : 25;\n  }\n  else if (hq.includes(geo) || (geo === 'india' && indiaWords.test(hq))) s_geo = 100;\n  else if (indiaWords.test(hq)) s_geo = 50;\n  else s_geo = 0;\n\n  // Decision maker (15%): 100 supported senior, 50 supported other, 0 none or unsupported\n  let s_role = 0;\n  if (e.decision_maker_supported) s_role = SENIOR.test(dm.designation || '') ? 100 : 50;\n\n  // Evidence (20%): 100 for 2 or more verified quotes, 50 for one, 0 for none\n  const n = e.evidence_count || 0;\n  const s_evid = n >= 2 ? 100 : (n === 1 ? 50 : 0);\n\n  const lead_score = Math.round(0.30 * s_ind + 0.20 * s_icp + 0.15 * s_geo + 0.15 * s_role + 0.20 * s_evid);\n  const routing_target = lead_score >= cfg.min_lead_score ? 'MASTER' : (lead_score >= 60 ? 'REVIEW' : 'QUARANTINE');\n\n  return { json: { ...e, lead_score, sub_scores: { industry: s_ind, icp: s_icp, geography: s_geo, role: s_role, evidence: s_evid }, routing_target } };\n});"
+        "jsCode": "const cfg = $('Parameter Normalizer').first().json;\nconst lc = s => String(s || '').toLowerCase();\nconst SENIOR = /(founder|co-founder|ceo|cto|chief|managing director|president|owner|vp|vice president|director)/i;\n\nreturn $input.all().map(item => {\n  const e = item.json;\n\n  if (e.validation_status !== 'VALIDATED') {\n    return { json: { ...e, lead_score: 0, sub_scores: {}, routing_target: 'QUARANTINE', score_reason: e.rejection_reason || 'NOT_VALIDATED' } };\n  }\n\n  const dm = e.key_decision_maker || {};\n\n  // Industry (30%): 100 direct match, 50 adjacent tech, 0 mismatch\n  const ind = lc(e.industry_sector + ' ' + e.company_description);\n  const target = lc(cfg.target_industry);\n  const words = target.split(/\\s+/).filter(w => w.length > 3);\n  const direct = ind.includes(target) || (words.length && words.every(w => ind.includes(w))) || /\\bit services\\b|software|technology|digital|web development|web design|website|web agency|app development|creative development|development agency|shopify|wordpress|e-?commerce development/.test(ind);\n  const s_ind = direct ? 100 : (/(tech|data|cloud|ai|automation)/.test(ind) ? 50 : 0);\n\n  // ICP size (20%): 100 matches target, 50 unknown, 0 enterprise or solo\n  const size = e.estimated_employee_range;\n  let s_icp;\n  if (cfg.company_size_range !== 'ALL' && size === cfg.company_size_range) s_icp = 100;\n  else if (size === 'UNKNOWN') s_icp = 50;\n  else if (size === '501+' || size === '1-10') s_icp = 0;\n  else s_icp = 50;\n\n  // Geography (15%): 100 HQ in target, 50 regional office, 0 foreign\n  const geo = lc(cfg.target_geography);\n  const hq = lc(e.headquarters_location);\n  const indiaWords = /india|gujarat|maharashtra|pune|mumbai|bengaluru|bangalore|delhi|hyderabad|chennai|ahmedabad|punjab/;\n  let s_geo;\n  if (!hq) {\n    // HQ not labelled: is the target place on the page at all (address, footer, contact)?\n    const place = geo.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    const pg = lc(e.page_text);\n    const onPage = !!place && new RegExp('\\\\b' + place + '\\\\b').test(pg);\n    // does the page say the company is based somewhere that is not the target place?\n    const baseClauses = pg.match(/(based in|based at|headquartered in|headquarters:?|head office|registered office|office is in|located in)[^.\\n]{0,90}/g) || [];\n    const noOfficeHere = !!place && new RegExp(\"(do not|don't|does not|no)\\\\s+(have\\\\s+)?(an?\\\\s+)?office\\\\s+in\\\\s+\" + place).test(pg);\n    // address lines: a 6-digit PIN on a line that looks like an address, e.g. \"Hadapsar Pune, Pin- 411028\"\n    const ADDR = /\\b(pin|india|maharashtra|mh|punjab|delhi|gujarat|karnataka|haryana|rajasthan|madhya pradesh|tamil nadu|kerala|road|rd|sector|floor|plot|office|opposite|near|nagar|colony|chowk|phata)\\b/;\n    const pinLines = String(e.page_text || '').split('\\n').map(l => l.toLowerCase()).filter(l => /[a-z][ ,.:\\-]*[1-9]\\d{5}\\b/.test(l) && ADDR.test(l));\n    const pinElsewhere = pinLines.length > 0 && !pinLines.some(l => new RegExp('\\\\b' + place + '\\\\b').test(l));\n    const GENERIC_OFFICE = /^(our|the|main|head|registered|corporate|branch|sales|regional|global|local|my|your|their|home|back|front|field|virtual|new|first|second|contact|business|company|visit|find|us|an?|this|that)$/;\n    const officeLabels = [...pg.matchAll(/^\\s*([a-z][a-z ]{2,24}) office\\s*$/gm)].map(m => m[1].trim()).filter(x => !x.split(' ').every(w => GENERIC_OFFICE.test(w)));\n    const officesElsewhere = officeLabels.length > 0 && !officeLabels.some(x => new RegExp('\\\\b' + place + '\\\\b').test(x));\n    const basedElsewhere = geo !== 'india' && (noOfficeHere || pinElsewhere || officesElsewhere || (baseClauses.length > 0 && !baseClauses.some(c => new RegExp('\\\\b' + place + '\\\\b').test(c))));\n    const placeRe = new RegExp('\\\\b' + place + '\\\\b');\n    // a line that is just \"Pune, Maharashtra, India\" is an address block; a breadcrumb or sentence containing it is not\n    const addrLine = pg.split('\\n').some(l => new RegExp('^\\\\s*' + place + '\\\\s*,\\\\s*[a-z ]{2,25}(\\\\s*,\\\\s*india)?\\\\s*\\\\.?\\\\s*$').test(l));\n    const located = baseClauses.some(c => placeRe.test(c)) || pinLines.some(l => placeRe.test(l)) || officeLabels.some(x => placeRe.test(x)) || addrLine;\n    s_geo = basedElsewhere ? 10 : (located ? 100 : (onPage ? 75 : 25));\n  }\n  else if (hq.includes(geo) || (geo === 'india' && indiaWords.test(hq))) s_geo = 100;\n  else if (indiaWords.test(hq)) s_geo = 50;\n  else s_geo = 0;\n\n  // Decision maker (15%): 100 supported senior, 50 supported other, 0 none or unsupported\n  let s_role = 0;\n  if (e.decision_maker_supported) s_role = SENIOR.test(dm.designation || '') ? 100 : 50;\n\n  // Evidence (20%): 100 for 2 or more verified quotes, 50 for one, 0 for none\n  const n = e.evidence_count || 0;\n  const s_evid = n >= 2 ? 100 : (n === 1 ? 50 : 0);\n\n  const lead_score_raw = Math.round(0.30 * s_ind + 0.20 * s_icp + 0.15 * s_geo + 0.15 * s_role + 0.20 * s_evid);\n  // a city target needs the location itself evidenced for Master; a mere mention on the page is not enough\n  const geoUnproven = geo !== 'india' && s_geo < 100;\n  const capped = geoUnproven && lead_score_raw >= cfg.min_lead_score;\n  const lead_score = capped ? Math.min(lead_score_raw, cfg.min_lead_score - 1) : lead_score_raw;\n  const routing_target = lead_score >= cfg.min_lead_score ? 'MASTER' : (lead_score >= 60 ? 'REVIEW' : 'QUARANTINE');\n\n  return { json: { ...e, lead_score, sub_scores: { industry: s_ind, icp: s_icp, geography: s_geo, role: s_role, evidence: s_evid }, routing_target, ...(capped ? { score_cap: 'GEOGRAPHY_NOT_EVIDENCED', lead_score_uncapped: lead_score_raw } : {}) } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        352,
-        496
+        816,
+        320
       ],
-      "id": "d51ed22f-a093-4a72-84c3-6df35543f823",
+      "id": "e0151ed9-e534-4686-9694-196822cca095",
       "name": "Scoring Engine"
     },
     {
@@ -666,10 +666,10 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        912,
-        480
+        1376,
+        304
       ],
-      "id": "b1055b97-1906-41e3-bf96-5fe0535d3269",
+      "id": "e3e5d12f-df56-46d0-88a9-51ebc7579d52",
       "name": "Score Router"
     },
     {
@@ -679,10 +679,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        544,
-        496
+        1008,
+        320
       ],
-      "id": "48f113c0-dfaa-47f3-939c-d562877dd3d6",
+      "id": "baa89f0e-9cb7-453b-8e5e-96418fac0c35",
       "name": "Dedup Check"
     },
     {
@@ -714,9 +714,7 @@
             "discovery_time": "={{ $json.discovery_time }}",
             "scrape_status": "={{ $json.scrape_status }}"
           },
-          "matchingColumns": [
-            "result_id"
-          ],
+          "matchingColumns": [],
           "schema": [
             {
               "id": "result_id",
@@ -725,8 +723,7 @@
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "canBeUsedToMatch": true
             },
             {
               "id": "campaign_id",
@@ -809,10 +806,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        -1984,
-        32
+        -1520,
+        -144
       ],
-      "id": "b98463bf-aa1c-4d62-a3b6-7a7da4d741fe",
+      "id": "d1eb5424-d03f-4acc-aee6-023e23a6c13a",
       "name": "Write Raw",
       "retryOnFail": false,
       "credentials": {
@@ -830,10 +827,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        720,
-        496
+        1184,
+        320
       ],
-      "id": "20be7e37-f4ef-4cf3-b9f4-393f005ac725",
+      "id": "fbe776e0-5624-47b0-9b77-b012c20c0f26",
       "name": "Prepare Rows"
     },
     {
@@ -1010,10 +1007,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1568,
-        224
+        2032,
+        48
       ],
-      "id": "ce1c1a5b-2e0b-4898-b7e4-f017285ad0ec",
+      "id": "5bfa4119-03a2-48ab-94e2-9cbaab8f9fa7",
       "name": "Write Master",
       "credentials": {
         "googleSheetsOAuth2Api": {
@@ -1157,10 +1154,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1280,
-        480
+        1744,
+        304
       ],
-      "id": "c1fbabf1-b407-49a1-a224-bf10014b5b36",
+      "id": "6e3061a4-c256-4665-ab28-ca1f9163a48b",
       "name": "Write Review",
       "credentials": {
         "googleSheetsOAuth2Api": {
@@ -1274,10 +1271,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1280,
-        656
+        1744,
+        480
       ],
-      "id": "7fa19526-aa54-4e6f-a373-c0ecca57d8b1",
+      "id": "747bfe6d-d8c7-454a-a728-1770342d5604",
       "name": "Write Quarantine",
       "credentials": {
         "googleSheetsOAuth2Api": {
@@ -1293,10 +1290,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1472,
-        224
+        -1008,
+        48
       ],
-      "id": "9aab2fcb-3fff-4d3f-905f-7a43b2f17dea",
+      "id": "618cce28-9efa-4887-81d0-9484ce9e6a60",
       "name": "Add About URL"
     },
     {
@@ -1329,10 +1326,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -1312,
-        224
+        -848,
+        48
       ],
-      "id": "2498d854-8af9-4b56-9f4c-b757a4af172a",
+      "id": "242509a5-b2cd-4252-9483-b96b907dfabf",
       "name": "Scrape About",
       "retryOnFail": false,
       "onError": "continueRegularOutput"
@@ -1344,10 +1341,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1168,
-        224
+        -704,
+        48
       ],
-      "id": "3a29bfa6-5e68-4478-805e-443f1abd3493",
+      "id": "13ef1692-8cc6-4cb2-a148-d1fe0324fe0e",
       "name": "Merge About"
     },
     {
@@ -1371,10 +1368,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1120,
-        224
+        1584,
+        48
       ],
-      "id": "3e97a504-0cd0-429b-9f1f-cc418544a98f",
+      "id": "df8da145-a115-4cec-85b8-09e563a8cb70",
       "name": "Read Master Domains",
       "executeOnce": true,
       "alwaysOutputData": true,
@@ -1392,11 +1389,24 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1344,
-        224
+        1808,
+        48
       ],
-      "id": "eed4f732-ec53-44d7-9c43-f3e1c5e549bd",
+      "id": "2db428f8-52b6-4fa8-84f8-f8bc3519a28c",
       "name": "Drop Existing Master"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(i => ({ json: { ...i.json, extraction_status: 'NO_CONTEXT', extraction_successful: false, company_name: null, key_decision_maker: { full_name: null, designation: null, public_business_email: null, linkedin_profile_url: null }, extracted_evidence_snippets: [], verification_flags: [] } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        256
+      ],
+      "id": "4505179d-e80e-4a1e-bf41-a99f0a1c78dc",
+      "name": "Mark No Context"
     }
   ],
   "pinData": {},
@@ -1572,6 +1582,13 @@
         [
           {
             "node": "Groq Extract",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark No Context",
             "type": "main",
             "index": 0
           }
@@ -1774,6 +1791,17 @@
           }
         ]
       ]
+    },
+    "Mark No Context": {
+      "main": [
+        [
+          {
+            "node": "Validation Controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -1781,10 +1809,10 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "07ee3aaa-39da-488e-9749-eda523bedebf",
+  "versionId": "5dacee7a-0605-42cc-8e72-ca30b271391e",
   "meta": {
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
-  "id": "vFbWnrU4kEvUCNv4",
+  "id": "cMCyQujH7GroePlt",
   "tags": []
 }

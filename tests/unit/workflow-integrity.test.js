@@ -67,4 +67,7 @@ const tokEst = Math.ceil((sys.length + JSON.stringify(schema).length + 4500) / 3
 console.log('INFO NFR-04 estimate at a full 4,500-char context: ~' + tokEst + ' input tokens (limit 2,000; measured earlier 1,051-1,463)');
 console.log('WARN NFR-04 cannot be proven offline: confirm usage.prompt_tokens <= 2000 on the largest live context (Groq response usage field)');
 const pn = N['Parse Prompt (Groq)'].parameters.jsonBody; T('GQ: Parse Prompt body present', !!pn);
+const hc = wf.connections['Has Context?'].main;
+T('WF: Has Context? false output is connected (no silent drops)', !!(hc[1] || []).length && wf.connections['Mark No Context'].main[0][0].node === 'Validation Controller');
+T('WF: startuplanes and leadgenerationcompanies are blocked at discovery', /startuplanes\.com/.test(CODE['Extract Hits']) && /leadgenerationcompanies\.in/.test(CODE['Extract Hits']));
 summary();

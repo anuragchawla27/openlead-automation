@@ -128,6 +128,27 @@ T('VF: fallback marks model_used', run('Verify Extraction (fallback)', [groq(mod
   global.validated = g;
 }
 
+// ============ No-context leads are logged, not dropped ============
+{
+  const nc = run('Mark No Context', [{ result_id: 'RES-x1', normalized_domain: 'acme.in', source_url: 'https://acme.in/', scrape_status: 'SCRAPE_FAILED', scrape_error: 'socket hang up', llm_context: '' }])[0];
+  T('NC: status NO_CONTEXT and nothing invented', nc.extraction_status === 'NO_CONTEXT' && nc.company_name === null && nc.extraction_successful === false);
+  const v = run('Validation Controller', [nc], { 'Parameter Normalizer': [cfg] })[0];
+  T('NC: rejected with a readable reason', v.validation_status === 'REJECTED' && /^ERR_NO_PAGE_CONTENT: SCRAPE_FAILED \/ socket hang up$/.test(v.rejection_reason), v.rejection_reason);
+}
+
+// ============ Validation: Director titles, evidence back-fill ============
+{
+  const base = { extraction_status: 'EXTRACTED', extraction_successful: true, company_name: 'Acme Labs', source_url: 'https://acme.in/about', company_contact_email: null, verification_flags: [], extracted_evidence_snippets: [], key_decision_maker: { full_name: 'Raunak Pandey', designation: 'Managing Director & Chief Strategist', public_business_email: null, linkedin_profile_url: null }, llm_context: '', page_text: 'Our team\nRaunak Pandey\nManaging Director & Chief Strategist\nArun Singh\nHead of SEO' };
+  const vv = (o) => run('Validation Controller', [{ ...base, ...o }], { 'Parameter Normalizer': [cfg] })[0];
+  T('VD: "Managing Director" is not mistaken for a CTO title', vv({}).decision_maker_supported === true);
+  const cto = vv({ key_decision_maker: { ...base.key_decision_maker, designation: 'CTO' } });
+  T('VD: a CTO claim still needs the word CTO on the page', cto.decision_maker_supported === false);
+  const bf = vv({ key_decision_maker: { full_name: 'Rajat Khoware', designation: 'Founder', public_business_email: null, linkedin_profile_url: null }, page_text: 'Acme Labs was founded in 2024 by Rajat Khoware.\nYou talk to Rajat Khoware, the founder, from the first call to launch.\nFounder Rajat Khoware\nA great agency in Pune for everyone.' });
+  T('VD: back-fills up to 2 verbatim page sentences naming the verified decision maker', bf.evidence_count === 2 && bf.verification_flags.includes('EVIDENCE_BACKFILLED_FROM_PAGE') && bf.extracted_evidence_snippets.every(x => base.page_text !== x && ('Acme Labs was founded in 2024 by Rajat Khoware.\nYou talk to Rajat Khoware, the founder, from the first call to launch.').includes(x)), JSON.stringify(bf.extracted_evidence_snippets));
+  T('VD: no back-fill when the decision maker is not supported', vv({ key_decision_maker: { ...base.key_decision_maker, full_name: 'Nobody Here' } }).evidence_count === 0);
+  T('VD: no back-fill from a bare name/title line (fewer than 5 words)', vv({}).evidence_count === 0);
+}
+
 // ============ Scoring Engine ============
 {
   const S = 'Scoring Engine';
@@ -142,6 +163,24 @@ T('VF: fallback marks model_used', run('Verify Extraction (fallback)', [groq(mod
   T('SC: no quotes + unsupported DM = 55 QUARANTINE', (x => x.lead_score === 55 && x.routing_target === 'QUARANTINE')(s({ decision_maker_supported: false, evidence_count: 0 })));
   T('SC: exactly 80 routes to MASTER', (x => x.lead_score === 80 && x.routing_target === 'MASTER')(s({ estimated_employee_range: '501+', headquarters_location: 'Pune, India' })));
   T('SC: min_lead_score 90 pushes an 83 to REVIEW', s({ headquarters_location: '', page_text: 'India' }, { ...cfg, min_lead_score: 90 }).routing_target === 'REVIEW');
+  T('SC: "based in Gurugram ... no office in Mumbai" (Digital Hanshu style) cannot reach Master', (x => x.sub_scores.geography === 10 && x.routing_target === 'REVIEW')(s({ headquarters_location: '', page_text: 'Website development in Mumbai. We are based in Palam Vihar Extension, Gurugram. We do not have an office in Mumbai.' }, { ...cfg, target_geography: 'Mumbai' })));
+  T('SC: page that says it is based in the target place scores 100', s({ headquarters_location: '', page_text: 'We are based in Pune, Maharashtra. Pune web agency.' }, { ...cfg, target_geography: 'Pune' }).sub_scores.geography === 100);
+  T('SC: country target (India) ignores the based-elsewhere rule', s({ headquarters_location: '', page_text: 'Based in Gurugram, India. India wide service.' }).sub_scores.geography !== 10);
+  T('SC: web-design agency is a direct industry match (36 Studios)', s({ industry_sector: 'Modern Web Design & Creative Development Agency', company_description: 'Modern Web Design Built for Absolute Global Dominance.' }).sub_scores.industry === 100);
+  T('SC: Pune address with PIN on a Nashik landing page -> based elsewhere (Dexter)', s({ headquarters_location: '', page_text: 'Web development in Nashik. Contact Info\nOffice No O-25, 5th Floor, Ascent Tower, Hadapsar Pune, Pin- 411028.' }, { ...cfg, target_geography: 'Nashik' }).sub_scores.geography === 10);
+  T('SC: Nashik PIN address is evidenced -> 100 (SterlingWeb)', s({ headquarters_location: '', page_text: 'Location\nNashik, MH, India 422004\nWeb dev in Nashik' }, { ...cfg, target_geography: 'Nashik' }).sub_scores.geography === 100);
+  T('SC: a 6-digit price range is not an address', s({ headquarters_location: '', page_text: 'Nashik web design\n1 Month 1000 - 250000 India wide' }, { ...cfg, target_geography: 'Nashik' }).sub_scores.geography === 75);
+  T('SC: offices labelled only for other cities -> based elsewhere (Dutta style)', s({ headquarters_location: '', page_text: 'Best web agency in Indore\nKolkata Office\nNewtown Kolkata\nBangalore Office\nKalyan Nagar' }, { ...cfg, target_geography: 'Indore' }).sub_scores.geography === 10);
+  T('SC: an office label for the target city scores 100', s({ headquarters_location: '', page_text: 'Indore web agency\nIndore Office\nVijay Nagar\nMumbai Office' }, { ...cfg, target_geography: 'Indore' }).sub_scores.geography === 100);
+  const strong = { industry_sector: 'Web development', company_description: 'Web agency', estimated_employee_range: '11-50', headquarters_location: '', decision_maker_supported: true, key_decision_maker: { full_name: 'A B', designation: 'Founder' }, evidence_count: 2 };
+  const cityCfg = { ...cfg, target_geography: 'Nashik', company_size_range: '11-50' };
+  const mention = s({ ...strong, page_text: 'We serve clients from Nashik to the world. Our Nashik division partner handles sales.' }, cityCfg);
+  T('SC: a mere mention of the target city cannot reach Master (ADmanta style) -> capped to Review', mention.routing_target === 'REVIEW' && mention.lead_score === 79 && mention.score_cap === 'GEOGRAPHY_NOT_EVIDENCED' && mention.lead_score_uncapped >= 80, JSON.stringify([mention.lead_score, mention.routing_target, mention.lead_score_uncapped]));
+  const proven = s({ ...strong, page_text: 'We are based in Nashik, Maharashtra.' }, cityCfg);
+  T('SC: an evidenced location reaches Master', proven.routing_target === 'MASTER' && !proven.score_cap, JSON.stringify([proven.lead_score, proven.routing_target]));
+  T('SC: generic "Our Office" heading is not another city (Zehn style)', (x => x.sub_scores.geography === 100)(s({ headquarters_location: '', page_text: 'Contact us\nOur Office\nPlot 57, Kachimet, Nagpur, 440023, India' }, { ...cfg, target_geography: 'Nagpur' })));
+  T('SC: a line "Pune, Maharashtra, India" is an address block (MagicWorks)', s({ headquarters_location: '', page_text: 'Web agency in Pune\nMagicWorks IT Solutions Pvt. Ltd.\nPune, Maharashtra, India\n+91 97645 66644' }, { ...cfg, target_geography: 'Pune' }).sub_scores.geography === 100);
+  T('SC: a breadcrumb containing "Mumbai, Maharashtra" is not an address (Pixocraft)', s({ headquarters_location: '', page_text: 'Home > Cities > Mumbai Web Development · Mumbai, Maharashtra\nWeb Development Company in Mumbai' }, { ...cfg, target_geography: 'Mumbai' }).sub_scores.geography === 75);
   T('SC: foreign HQ scores geography 0', s({ headquarters_location: 'Austin, Texas, USA' }).sub_scores.geography === 0);
   T('SC: junior designation supported = role 50', s({ key_decision_maker: { designation: 'Account Manager' } }).sub_scores.role === 50);
   T('SC: irrelevant industry scores 0', s({ industry_sector: 'Bakery', company_description: 'We bake bread' }).sub_scores.industry === 0);
