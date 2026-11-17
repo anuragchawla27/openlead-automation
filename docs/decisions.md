@@ -61,3 +61,20 @@
 ## Day 13 result
 - Campaign CMP-2026-8QF3 (Pune web agencies): Gigante 90, MagicWorks 83 and Awrange 83 reached Master; Sanpurple 68 went to Review.
 - All scores were recomputed by hand from the sub-scores and matched. Evidence quotes were checked against the page text.
+Decisions
+- Master is append-only: Read Master Domains → Drop Existing Master → Write Master. Existing rows are never touched, so human_approval, outreach_status and created_at cannot reset.
+- Sheet timestamps are IST text (YYYY-MM-DD HH:mm:ss IST); now_utc is kept inside n8n.
+- Groq 429s are retried and fall back to gpt-oss-20b; failed extractions are not remembered by Dedup.
+- Verification quotes are checked against page text only.
+- Extract Hits enforces max_leads_limit across all queries; at most 2 SERP pages per query.
+- Geography: if the HQ is unlabelled, score 75 when the target place is on the page, else 25.
+
+Known gaps
+- Track B (Reddit) is not connected beyond Reddit Text From SERP.
+- Dedup memory is saved only when the workflow is active, not in manual runs (to confirm on Day 16). Master lookup is the real duplicate guard.
+- Review sheet has no approval column; stale Review/Quarantine rows remain after a lead is promoted to Master.
+- "Founders and CEOs only" is parsed but not enforced as a filter.
+- Compiled queries do not change with the target industry.
+- Same domain scored 71 then 86 across runs (AB Web Solutions); role evidence under review.
+- NFR-04 (≤2,000 input tokens) is unmeasured; needs a live usage.prompt_tokens.
+- Google OAuth in Testing mode expires every 7 days; reconnect before the demo.
