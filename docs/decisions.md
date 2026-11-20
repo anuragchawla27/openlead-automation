@@ -94,3 +94,18 @@ Deliberate deviations from the handbook
 - Continue-on-fail is removed on the Sheets write nodes so write failures are loud, not silent.
 - Groq gpt-oss-120b with a gpt-oss-20b fallback replaces Gemini 1.5 Flash.
 - master_lead_id is MLD-<hash>; the handbook pattern is MLD-<13 digits>-<4>. To be aligned on Day 15.
+
+## Day 14: Outreach drafter (FR-14, NFR-07)
+Decisions
+- Separate workflow openlead-outreach.json (manual trigger, drafts only, no Gmail node), so drafting cannot break discovery.
+- Only Master rows with outreach_status NOT_SENT or blank, no existing draft, valid email, contact name, evidence and score >= 80 are drafted; max 10 per run. DRAFTED, SENT and FAILED rows are never re-drafted.
+- Groq gpt-oss-120b (reasoning_effort low, temperature 0.2, strict JSON schema: subject, body, evidence_used) writes only the body. Greeting, sign-off and the compliance footer (address + UNSUBSCRIBE) are added by code.
+- Deterministic verifier rejects: bad JSON or truncation, body outside 35-90 words, email over 120 words (footer excluded), evidence_used not verbatim in the stored evidence, numbers not in the lead facts, unsupported claims (award, ranked, certified), links/emails/phones/emojis/exclamation marks, spam or fake-familiarity phrases, subject without the company name. A failed draft stays NOT_SENT with the reason in draft_notes and is retried on the next run.
+- Master gained 4 columns: outreach_subject, outreach_draft, drafted_at, draft_notes. outreach_draft stores the full email text, so the reviewer approves exactly what Day 15 will send (the handbook builds greeting and footer at send time).
+- human_approval is never written by this workflow; the approval gate stays in Day 15.
+- Live run: 3 of 3 real Pune leads drafted; 555-601 prompt tokens per lead.
+Known gaps
+- The verifier cannot catch subjective praise (the Gigante draft says "positions you well for scaling client projects"); add a praise-word guard in hardening.
+- SENDER_ADDRESS is the placeholder "Maharashtra, India"; replace it with the full postal address before any real send.
+- The first live run exposed three over-strict checks (digits in "n8n", "free up", a bullet dash in evidence_used); fixed and kept as regression tests.
+- n8n retry waits a fixed 5 s for 3 tries; it is not exponential.
