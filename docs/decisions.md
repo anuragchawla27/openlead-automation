@@ -78,3 +78,19 @@ Known gaps
 - Same domain scored 71 then 86 across runs (AB Web Solutions); role evidence under review.
 - NFR-04 (≤2,000 input tokens) is unmeasured; needs a live usage.prompt_tokens.
 - Google OAuth in Testing mode expires every 7 days; reconnect before the demo.
+## Known gaps and deviations (after the Jaipur and Kochi runs)
+Known gaps
+- Intuisyz (Kochi) is still quarantined as BASED_ELSEWHERE in the live v12 run; the v11 page replays at 70 (Review). Cause is the fetched About page text. It fails safe: a good lead is held back.
+- Cloudflare-obfuscated emails are not decoded.
+- "Headquarters in <other city>" scores 50 geography, not 10 (ClienZon).
+- Run-to-run extraction variance (AB Web Solutions 71 vs 86).
+- Track B (Reddit) is not wired past Reddit Text From SERP.
+- The Review sheet has no approval column. "Founders and CEOs only" is not a filter.
+- Groq free-tier 429s on the 120b model; the 20b fallback recovers.
+
+Deliberate deviations from the handbook
+- 64-bit pure-JS hash instead of SHA-256, because crypto is blocked in the n8n Code sandbox.
+- Master is append-only after a domain lookup, not UPDATE, so re-runs cannot reset human_approval or created_at.
+- Continue-on-fail is removed on the Sheets write nodes so write failures are loud, not silent.
+- Groq gpt-oss-120b with a gpt-oss-20b fallback replaces Gemini 1.5 Flash.
+- master_lead_id is MLD-<hash>; the handbook pattern is MLD-<13 digits>-<4>. To be aligned on Day 15.

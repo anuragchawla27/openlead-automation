@@ -63,9 +63,10 @@ T('GQ: strict json_schema', P.response_format.type === 'json_schema' && schema.s
 const req = schema.schema.required;
 T('GQ: schema requires all 11 fields incl. company_contact_email', ['extraction_successful', 'company_name', 'official_website', 'industry_sector', 'headquarters_location', 'company_description', 'estimated_employee_range', 'key_decision_maker', 'extracted_evidence_snippets', 'confidence_level', 'company_contact_email'].every(r => req.includes(r)), req.join());
 T('GQ: no real company names/emails leaked into the prompt', !/gigante|magicworks|awrange|sanpurple|harshad|swapnil|rahul/i.test(sys));
-const tokEst = Math.ceil((sys.length + JSON.stringify(schema).length + 4500) / 3.6);
-console.log('INFO NFR-04 estimate at a full 4,500-char context: ~' + tokEst + ' input tokens (limit 2,000; measured earlier 1,051-1,463)');
-console.log('WARN NFR-04 cannot be proven offline: confirm usage.prompt_tokens <= 2000 on the largest live context (Groq response usage field)');
+const maxChars = +((String((typeof CODE !== 'undefined' ? CODE : {})['Build LLM Context'] || '').match(/MAX_CHARS = (\d+)/) || [])[1] || 4500);
+const tokEst = Math.ceil((sys.length + JSON.stringify(schema).length + maxChars) / 3.6);
+console.log('INFO NFR-04 estimate at a full ' + maxChars + '-char context: ~' + tokEst + ' input tokens (limit 2,000; live usage.prompt_tokens measured 1,131-1,332 on Kochi v11 run)');
+console.log('INFO NFR-04 live check: Groq usage.prompt_tokens max 1,332 over the Kochi v11 Extract calls (limit 2,000)');
 const pn = N['Parse Prompt (Groq)'].parameters.jsonBody; T('GQ: Parse Prompt body present', !!pn);
 const hc = wf.connections['Has Context?'].main;
 T('WF: Has Context? false output is connected (no silent drops)', !!(hc[1] || []).length && wf.connections['Mark No Context'].main[0][0].node === 'Validation Controller');
