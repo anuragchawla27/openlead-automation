@@ -153,3 +153,19 @@ Known gaps:
 Known gaps:
 - Nodes set to continue on fail (HTTP, Gmail Send, Sheets writes) do not raise errors, so they do not alert. Dispatch failures are recorded as FAILED in the sheet.
 - Error workflows fire only for production runs, not manual executions.
+
+## Day 18: Track B talent sourcing (Reddit)
+
+- Extended the Reddit branch past `Reddit Text From SERP`: post fetch, Groq extraction (strict schema), code verification, scoring and routing, then write to a `Talent_Leads` tab (qualified/review) or `Stage_B_Quarantine` (rejected). Rows upsert on `post_id`.
+- Same anti-hallucination rules as Track B2B: a skill, link, quote, location or role is kept only if it appears in the post text. Experience level is set by code, never by the model.
+- Track B score (my own weights, the handbook defines only the B2B formula): role 30, skills 25, portfolio 20, level 15, quote 10. Routing: >= 80 qualified, 60-79 review, < 60 rejected.
+- Reddit returns HTTP 403 "Blocked" to the post fetch even with a browser User-Agent, and new API access needs approval. `Scrape Reddit Post` is therefore disabled in the repo, and leads are judged on the Google title and snippet.
+- Snippets can mix text from other threads (seen live: a quote from another post attached to the wrong lead), so a snippet-only lead can never be auto-qualified. It is capped at REVIEW and a person confirms it. A snippet lead with a verified quote and AI role fit goes to REVIEW from a score of 50 (floor applies to snippets only).
+- Freshness: older than 180 days is capped at REVIEW, older than 365 days is rejected.
+- Discovery queries use short subreddit-scoped searches. The first long `intitle:` query made Google drop `site:` and return job boards.
+- Verified live: 17 hits ran through every node, 1 REVIEW row and 16 quarantined, no unverifiable claim passed.
+
+Known gaps:
+- Fewer than 20 talent leads from Reddit snippets alone. Planned: open-web portfolio search, where pages can be fetched.
+- Personalised talent invitations are not generated.
+- A temporary API failure writes a quarantine row that a later success does not remove.
