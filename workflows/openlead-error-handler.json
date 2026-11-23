@@ -1,0 +1,78 @@
+{
+  "name": "openlead-error-handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "2100676b-e847-46ac-aa69-22042c9c4a8a",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Alert: turn the Error Trigger payload into a Telegram message (FR-18)\nconst CHAT_ID = 'REPLACE_WITH_TELEGRAM_CHAT_ID';\nif (CHAT_ID === 'REPLACE_WITH_TELEGRAM_CHAT_ID') throw new Error('SET_TELEGRAM_CHAT_ID');\n\nconst e = $input.first().json || {};\nconst ex = e.execution || {};\nconst wf = e.workflow || {};\n\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst redact = (s) => String(s)\n  .replace(/gsk_[A-Za-z0-9]+/g, '[redacted]')\n  .replace(/AIza[0-9A-Za-z_-]+/g, '[redacted]')\n  .replace(/ya29\\.[0-9A-Za-z._-]+/g, '[redacted]')\n  .replace(/Bearer\\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')\n  .replace(/\\b\\d{8,}:[A-Za-z0-9_-]{30,}/g, '[redacted]');\nconst clip = (s, n) => (s.length > n ? s.slice(0, n) + '...' : s);\nconst safe = (v, n) => esc(clip(redact(v == null || v === '' ? 'unknown' : v), n));\n\n// IST timestamp without Intl\nconst ist = new Date(Date.now() + 330 * 60000).toISOString().replace('T', ' ').slice(0, 19) + ' IST';\n\nconst lines = [\n  '🚨 <b>PIPELINE FAULT: OpenLead Automation</b>',\n  '',\n  '<b>Workflow:</b> ' + safe(wf.name, 120),\n  '<b>Failed node:</b> <code>' + safe(ex.lastNodeExecuted, 120) + '</code>',\n  '<b>Execution ID:</b> <code>' + safe(ex.id, 40) + '</code>',\n  '<b>Mode:</b> ' + safe(ex.mode, 20),\n  '<b>Time:</b> ' + ist,\n  '<b>Error:</b> <i>' + safe(ex.error && ex.error.message, 500) + '</i>',\n  '',\n  '<i>Workflow stopped safely. Check the execution log.</i>'\n];\n\nreturn [{ json: { chat_id: CHAT_ID, text: lines.join('\\n'), parse_mode: 'HTML' } }];"
+      },
+      "id": "c652349a-36a9-4c5a-8825-47267a942ac7",
+      "name": "Build Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "3fb49c1b-74e2-4487-8592-13f17c892ef6",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Alert": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata"
+  },
+  "tags": []
+}
