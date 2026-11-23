@@ -142,3 +142,14 @@ Known gaps:
 Known gaps:
 - n8n retry delay is a fixed 5 s, not exponential (NFR-01 asks for 5 s with multiplier 2).
 - The scheduled prompt is fixed. Rotating campaigns is not built.
+
+## Day 17: Telemetry and Telegram alerts (FR-18, TC-14)
+
+- Added a global error workflow (`openlead-error-handler.json`): Error Trigger, Build Alert code node, Telegram node. Each pipeline workflow points to it through Settings > Error Workflow, which is set by hand because workflow IDs differ per machine.
+- Alert text is HTML-escaped, API keys and tokens are redacted, and messages are truncated. The alert shows workflow, failed node, execution ID, mode, IST time and error.
+- The bot token lives only in an n8n Telegram credential. The chat ID is a constant in the code node instead of `$env.TELEGRAM_ADMIN_CHAT_ID` (the handbook sample), because n8n can block env access in nodes. The committed file keeps a placeholder, and the node throws `SET_TELEGRAM_CHAT_ID` until it is set.
+- Verified live: a sample alert from a manual test, and a real alert from a scheduled workflow that threw an uncaught error (TC-14).
+
+Known gaps:
+- Nodes set to continue on fail (HTTP, Gmail Send, Sheets writes) do not raise errors, so they do not alert. Dispatch failures are recorded as FAILED in the sheet.
+- Error workflows fire only for production runs, not manual executions.
