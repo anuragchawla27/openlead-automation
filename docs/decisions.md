@@ -109,3 +109,22 @@ Known gaps
 - SENDER_ADDRESS is the placeholder "Maharashtra, India"; replace it with the full postal address before any real send.
 - The first live run exposed three over-strict checks (digits in "n8n", "free up", a bullet dash in evidence_used); fixed and kept as regression tests.
 - n8n retry waits a fixed 5 s for 3 tries; it is not exponential.
+
+## Day 15: Approval gate, suppression check, Gmail dispatch (FR-15, FR-16, FR-17, NFR-07)
+
+- Dispatch is a separate workflow (`openlead-dispatch.json`), run manually. It never runs inside discovery or drafting, so sending is always a deliberate act.
+- Used the n8n Gmail node rather than a hand-built base64 RFC 822 message. It is less code and less to break.
+- `TEST_MODE` defaults to `true`. In test mode the recipient is a test inbox, the subject gets `[TEST] `, the body names the real recipient, and the row is never marked `SENT`. It stays `DRAFTED` with a `TEST_SENT` note.
+- Gate (all must hold): `human_approval` equals `APPROVED` (trimmed, case-insensitive), status `DRAFTED`, no `sent_at`, valid email, subject and draft present, draft contains `UNSUBSCRIBE`, score >= 80, and email and domain not on the suppression list. Build Message re-checks approval and footer and halts with `DISPATCH_HALTED` if either fails.
+- Suppression is a `Suppression_List` tab (`email, domain, reason, added_at`). A match on email or domain writes `SUPPRESSED` and sends nothing (TC-13).
+- The workflow never writes `human_approval`. Only a human sets it (TC-12).
+- Max 5 sends per run. Header-injection characters are stripped from recipient and subject.
+- `FAILED` rows are not auto-retried. A person must reset them.
+- Test fix: `outreach.test.js` normalises CRLF when reading the prompt file, because Git on Windows checks files out with CRLF.
+- Verified live: unapproved leads skipped, an approved lead produced a `[TEST]` email in the test inbox, and a suppressed approved lead produced no email and was marked `SUPPRESSED`.
+
+Known gaps:
+- Gmail sends from the authenticated user's address, not `engineering@pranavxlabs.com`. A real PranavX sender needs Workspace or a verified send-as alias.
+- Automatic handling of UNSUBSCRIBE replies (24 h rule) is not built. Suppression rows are added by hand.
+- `SENDER_ADDRESS` is still a placeholder and must be replaced before any live send.
+- Google OAuth is in Testing mode, so tokens expire every 7 days. Reconnect before the demo.

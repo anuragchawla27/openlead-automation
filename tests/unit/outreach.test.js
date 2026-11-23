@@ -3,7 +3,7 @@ const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '../..');
 const wf = JSON.parse(fs.readFileSync(path.join(root, 'workflows/openlead-outreach.json'), 'utf8'));
 const rawWf = fs.readFileSync(path.join(root, 'workflows/openlead-outreach.json'), 'utf8');
-const PROMPT = fs.readFileSync(path.join(root, 'prompts/outreach.system.md'), 'utf8').trim();
+const PROMPT = fs.readFileSync(path.join(root, 'prompts/outreach.system.md'), 'utf8').replace(/\r\n/g, '\n').trim();
 const SCHEMA = JSON.parse(fs.readFileSync(path.join(root, 'schemas/outreach.schema.json'), 'utf8'));
 const CODE = {}, N = {}; wf.nodes.forEach(n => { N[n.name] = n; if (n.parameters.jsCode) CODE[n.name] = n.parameters.jsCode; });
 let pass = 0, fail = 0; const failures = [];
