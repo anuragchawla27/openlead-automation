@@ -6,7 +6,7 @@ const groq = o => ({ choices: [{ message: { content: typeof o === 'string' ? o :
 // ============ Parameter Normalizer ============
 {
   const N = 'Parameter Normalizer';
-  const mk = p => run(N, [groq(p)], { 'Intake Form': [{ campaign_prompt: 'find agencies' }] })[0];
+  const mk = p => run(N, [groq(p)], { 'Prompt Not Empty': [{ campaign_prompt: 'find agencies' }] })[0];
   const base = { task_category: 'B2B_LEAD_GEN', target_industry: 'web agencies', target_geography: 'mumbai', company_size_range: 'ALL', target_roles: ['founder', 'ceo'], exclusion_keywords: ['Staffing'], max_leads_limit: 500, min_lead_score: 80 };
   const a = mk(base);
   T('PN: valid config', a.config_valid === true && a.config_errors.length === 0, JSON.stringify(a.config_errors));
@@ -23,9 +23,9 @@ const groq = o => ({ choices: [{ message: { content: typeof o === 'string' ? o :
   T('PN: contradiction detected', d.config_valid === false && d.config_errors.some(e => e.startsWith('ERR_CONTRADICTION')));
   const e = mk({ ...base, task_category: 'NONSENSE' });
   T('PN: bad category rejected', e.config_valid === false && e.config_errors.includes('ERR_BAD_CATEGORY'));
-  const f = run(N, [groq('not json at all')], { 'Intake Form': [{ campaign_prompt: 'x' }] })[0];
+  const f = run(N, [groq('not json at all')], { 'Prompt Not Empty': [{ campaign_prompt: 'x' }] })[0];
   T('PN: unparseable model output -> ERR_PARSE_FAILED', f.config_valid === false && /ERR_PARSE_FAILED/.test(f.config_errors[0]));
-  const g = run(N, [groq(base)], { 'Intake Form': [{ campaign_prompt: '   ' }] })[0];
+  const g = run(N, [groq(base)], { 'Prompt Not Empty': [{ campaign_prompt: '   ' }] })[0];
   T('PN: empty prompt -> ERR_EMPTY_PROMPT', g.config_valid === false && g.config_errors[0] === 'ERR_EMPTY_PROMPT');
   const h = mk({ ...base, max_leads_limit: 0, min_lead_score: 150 });
   T('PN: low/high bounds clamped (0->1, 150->100)', h.max_leads_limit === 1 && h.min_lead_score === 100);

@@ -128,3 +128,17 @@ Known gaps:
 - Automatic handling of UNSUBSCRIBE replies (24 h rule) is not built. Suppression rows are added by hand.
 - `SENDER_ADDRESS` is still a placeholder and must be replaced before any live send.
 - Google OAuth is in Testing mode, so tokens expire every 7 days. Reconnect before the demo.
+
+## Day 16: Scheduling and rate limits
+
+- Added a `Daily Schedule` trigger (09:00, workflow timezone Asia/Kolkata) and a `Scheduled Campaign` node that holds a fixed prompt. The manual form and the cron both enter through `Prompt Not Empty`.
+- `Parameter Normalizer` reads the prompt from `Prompt Not Empty` instead of the form node, so cron runs do not crash.
+- The committed workflow stays `active: false`. The cron fires only while the workflow is Active, so it is switched on only for the demo or production.
+- Rate limits use n8n HTTP batching as a token bucket: SerpAPI 1 request per 1.5 s, page scrapes 3 per second, Groq 1 per 6 s (fallback 1 per 8 s). At most 4 SerpAPI credits per scheduled run.
+- Daily re-runs are idempotent because Master domain dedup blocks repeat companies (NFR-08).
+- Dispatch is not scheduled. Sending stays manual and human-gated.
+- Verified live: a run started from the schedule node produced a valid config and routed leads to Master, Review and Quarantine.
+
+Known gaps:
+- n8n retry delay is a fixed 5 s, not exponential (NFR-01 asks for 5 s with multiplier 2).
+- The scheduled prompt is fixed. Rotating campaigns is not built.

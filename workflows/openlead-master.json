@@ -18,12 +18,12 @@
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.5,
       "position": [
-        -3632,
-        432
+        -640,
+        -432
       ],
-      "id": "30ee1e4b-8ec5-4baf-898e-312ad74d7ac8",
+      "id": "e7e04173-6df3-44e3-9dba-84cd8a0abace",
       "name": "Intake Form",
-      "webhookId": "abf60010-71db-4df4-9c5c-107fa25f0635"
+      "webhookId": "75b54723-1452-4cb7-8171-8c5919f5b97c"
     },
     {
       "parameters": {
@@ -39,10 +39,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -3232,
-        336
+        -240,
+        -528
       ],
-      "id": "03f5f413-4ec7-49b0-8e6d-a8a32d474574",
+      "id": "622d01c4-3aea-4058-bca1-372825b086ae",
       "name": "Parse Prompt (Groq)",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -56,15 +56,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const ROLE_DEFAULTS = {\n  B2B_LEAD_GEN: [\"Founder\", \"CEO\", \"CTO\", \"Business Development Director\"],\n  TALENT_RECRUITMENT: [\"AI Automation Intern\", \"AI Engineer Intern\"],\n  CUSTOM_RESEARCH: [\"Founder\"]\n};\n\nconst SIZES = [\"1-10\", \"11-50\", \"51-200\", \"201-500\", \"501+\", \"ALL\"];\n\nconst titleCase = (value) =>\n  String(value)\n    .replace(/\\s+/g, \" \")\n    .trim()\n    .split(\" \")\n    .filter(Boolean)\n    .map((word) =>\n      word.length <= 3 && word === word.toUpperCase()\n        ? word\n        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()\n    )\n    .join(\" \");\n\nconst prompt = $(\"Intake Form\").first().json.campaign_prompt;\n\n// 0. Reject empty prompts (ERR_EMPTY_PROMPT)\nif (!prompt || !String(prompt).trim()) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_EMPTY_PROMPT\"],\n        source_prompt: prompt || \"\"\n      }\n    }\n  ];\n}\n\n// 1. Parse model output safely\nlet p;\n\ntry {\n  const content = $input.first()?.json?.choices?.[0]?.message?.content;\n\n  if (typeof content !== \"string\" || !content.trim()) {\n    throw new Error(\"Missing or empty model response content\");\n  }\n\n  const txt = content\n    .replace(/```(?:json)?/gi, \"\")\n    .trim();\n\n  p = JSON.parse(txt);\n\n  if (!p || typeof p !== \"object\" || Array.isArray(p)) {\n    throw new Error(\"Model response must be a JSON object\");\n  }\n} catch (e) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_PARSE_FAILED: \" + e.message],\n        source_prompt: prompt\n      }\n    }\n  ];\n}\n\nconst errors = [];\nconst clamped = [];\n\n// 2. Validate category\nconst category = p.task_category;\n\nif (!Object.prototype.hasOwnProperty.call(ROLE_DEFAULTS, category)) {\n  errors.push(\"ERR_BAD_CATEGORY\");\n}\n\n// 3. Validate and clamp bounds (FR-02)\nlet max = Number.isInteger(p.max_leads_limit)\n  ? p.max_leads_limit\n  : 20;\n\nif (max > 100) {\n  max = 100;\n  clamped.push(\"max_leads_limit\");\n}\n\nif (max < 1) {\n  max = 1;\n  clamped.push(\"max_leads_limit\");\n}\n\nlet minScore = Number.isInteger(p.min_lead_score)\n  ? p.min_lead_score\n  : 80;\n\nif (minScore > 100) {\n  minScore = 100;\n  clamped.push(\"min_lead_score\");\n}\n\nif (minScore < 1) {\n  minScore = 1;\n  clamped.push(\"min_lead_score\");\n}\n\n// 4. Apply defaults and normalize values\nconst industry = titleCase(\n  p.target_industry || \"Information Technology Services\"\n);\n\nconst geography = titleCase(\n  p.target_geography || \"India\"\n);\n\nlet size = SIZES.includes(p.company_size_range)\n  ? p.company_size_range\n  : \"ALL\";\n\nif (category === \"B2B_LEAD_GEN\" && size === \"ALL\") {\n  size = \"11-50\";\n}\n\nconst rawRoles = Array.isArray(p.target_roles)\n  ? p.target_roles\n  : [];\n\nlet roles = rawRoles\n  .map((role) => titleCase(role))\n  .filter(Boolean);\n\n// Track B: remove persona-only words for talent recruitment\nconst PERSONA = new Set([\n  \"student\",\n  \"students\",\n  \"fresher\",\n  \"freshers\",\n  \"candidate\",\n  \"candidates\",\n  \"people\",\n  \"person\",\n  \"developer\",\n  \"developers\",\n  \"intern\",\n  \"interns\"\n]);\n\nif (category === \"TALENT_RECRUITMENT\") {\n  roles = roles.filter(\n    (role) => !PERSONA.has(role.toLowerCase())\n  );\n}\n\n// Use category defaults if no valid roles remain\nif (roles.length === 0 && ROLE_DEFAULTS[category]) {\n  roles = [...ROLE_DEFAULTS[category]];\n}\n\n// Normalize exclusion keywords\nconst rawExclusions = Array.isArray(p.exclusion_keywords)\n  ? p.exclusion_keywords\n  : [];\n\nconst exclusions = [\n  ...new Set(\n    rawExclusions\n      .map((item) => String(item).trim().toLowerCase())\n      .filter(Boolean)\n  )\n];\n\n// 5. Check contradictions (FR-02)\nfor (const exclusion of exclusions) {\n  const industryConflict = industry\n    .toLowerCase()\n    .includes(exclusion);\n\n  const roleConflict = roles.some((role) =>\n    role.toLowerCase().includes(exclusion)\n  );\n\n  if (industryConflict || roleConflict) {\n    errors.push(\n      `ERR_CONTRADICTION: exclusion \"${exclusion}\" overlaps target industry/roles`\n    );\n  }\n}\n\n// 6. Compile search queries (FR-03)\nlet compiled = [];\n\nif (category === \"B2B_LEAD_GEN\") {\n  compiled = [\n    `\"web development agency\" ${geography} founder -site:linkedin.com -site:naukri.com -site:clutch.co`,\n    `\"software development company\" ${geography} \"our team\" founder -site:linkedin.com -site:clutch.co`\n  ];\n} else if (category === \"TALENT_RECRUITMENT\") {\n  // Candidate-intent phrasing; role filtering occurs during extraction/scoring.\n  compiled = [\n    `site:reddit.com (intitle:\"looking for internship\" OR intitle:\"seeking internship\" OR intitle:\"open to work\" OR intitle:\"for hire\" OR intitle:\"my portfolio\") (AI OR automation OR n8n OR \"machine learning\")`\n  ];\n} else {\n  compiled = [\n    `\"${industry}\" \"${geography}\"`\n  ];\n}\n\n// 7. Generate deterministic campaign ID\n// Case- and role-order-insensitive\nconst core = {\n  category,\n  industry: industry.toLowerCase(),\n  geography: geography.toLowerCase(),\n  size,\n  roles: roles.map((role) => role.toLowerCase()).sort(),\n  exclusions: [...exclusions].sort(),\n  max,\n  minScore\n};\n\nlet h = 5381;\n\nfor (const ch of JSON.stringify(core)) {\n  h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;\n}\n\nconst campaign_id =\n  `CMP-${new Date().getFullYear()}-${h\n    .toString(36)\n    .toUpperCase()\n    .padStart(4, \"0\")\n    .slice(-4)}`;\n\nif (!/^CMP-[0-9]{4}-[A-Z0-9]{4}$/.test(campaign_id)) {\n  errors.push(\"ERR_BAD_CAMPAIGN_ID\");\n}\n\n// 8. Return normalized campaign configuration\nreturn [\n  {\n    json: {\n      campaign_id,\n      task_category: category,\n      target_industry: industry,\n      target_geography: geography,\n      company_size_range: size,\n      target_roles: roles,\n      exclusion_keywords: exclusions,\n      max_leads_limit: max,\n      min_lead_score: minScore,\n      compiled_queries: compiled,\n      clamped_fields: [...new Set(clamped)],\n      config_valid: errors.length === 0,\n      config_errors: errors,\n      source_prompt: prompt,\n      created_at: new Date().toISOString()\n    }\n  }\n];"
+        "jsCode": "const ROLE_DEFAULTS = {\n  B2B_LEAD_GEN: [\"Founder\", \"CEO\", \"CTO\", \"Business Development Director\"],\n  TALENT_RECRUITMENT: [\"AI Automation Intern\", \"AI Engineer Intern\"],\n  CUSTOM_RESEARCH: [\"Founder\"]\n};\n\nconst SIZES = [\"1-10\", \"11-50\", \"51-200\", \"201-500\", \"501+\", \"ALL\"];\n\nconst titleCase = (value) =>\n  String(value)\n    .replace(/\\s+/g, \" \")\n    .trim()\n    .split(\" \")\n    .filter(Boolean)\n    .map((word) =>\n      word.length <= 3 && word === word.toUpperCase()\n        ? word\n        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()\n    )\n    .join(\" \");\n\nconst prompt = $(\"Prompt Not Empty\").first().json.campaign_prompt;\n\n// 0. Reject empty prompts (ERR_EMPTY_PROMPT)\nif (!prompt || !String(prompt).trim()) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_EMPTY_PROMPT\"],\n        source_prompt: prompt || \"\"\n      }\n    }\n  ];\n}\n\n// 1. Parse model output safely\nlet p;\n\ntry {\n  const content = $input.first()?.json?.choices?.[0]?.message?.content;\n\n  if (typeof content !== \"string\" || !content.trim()) {\n    throw new Error(\"Missing or empty model response content\");\n  }\n\n  const txt = content\n    .replace(/```(?:json)?/gi, \"\")\n    .trim();\n\n  p = JSON.parse(txt);\n\n  if (!p || typeof p !== \"object\" || Array.isArray(p)) {\n    throw new Error(\"Model response must be a JSON object\");\n  }\n} catch (e) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_PARSE_FAILED: \" + e.message],\n        source_prompt: prompt\n      }\n    }\n  ];\n}\n\nconst errors = [];\nconst clamped = [];\n\n// 2. Validate category\nconst category = p.task_category;\n\nif (!Object.prototype.hasOwnProperty.call(ROLE_DEFAULTS, category)) {\n  errors.push(\"ERR_BAD_CATEGORY\");\n}\n\n// 3. Validate and clamp bounds (FR-02)\nlet max = Number.isInteger(p.max_leads_limit)\n  ? p.max_leads_limit\n  : 20;\n\nif (max > 100) {\n  max = 100;\n  clamped.push(\"max_leads_limit\");\n}\n\nif (max < 1) {\n  max = 1;\n  clamped.push(\"max_leads_limit\");\n}\n\nlet minScore = Number.isInteger(p.min_lead_score)\n  ? p.min_lead_score\n  : 80;\n\nif (minScore > 100) {\n  minScore = 100;\n  clamped.push(\"min_lead_score\");\n}\n\nif (minScore < 1) {\n  minScore = 1;\n  clamped.push(\"min_lead_score\");\n}\n\n// 4. Apply defaults and normalize values\nconst industry = titleCase(\n  p.target_industry || \"Information Technology Services\"\n);\n\nconst geography = titleCase(\n  p.target_geography || \"India\"\n);\n\nlet size = SIZES.includes(p.company_size_range)\n  ? p.company_size_range\n  : \"ALL\";\n\nif (category === \"B2B_LEAD_GEN\" && size === \"ALL\") {\n  size = \"11-50\";\n}\n\nconst rawRoles = Array.isArray(p.target_roles)\n  ? p.target_roles\n  : [];\n\nlet roles = rawRoles\n  .map((role) => titleCase(role))\n  .filter(Boolean);\n\n// Track B: remove persona-only words for talent recruitment\nconst PERSONA = new Set([\n  \"student\",\n  \"students\",\n  \"fresher\",\n  \"freshers\",\n  \"candidate\",\n  \"candidates\",\n  \"people\",\n  \"person\",\n  \"developer\",\n  \"developers\",\n  \"intern\",\n  \"interns\"\n]);\n\nif (category === \"TALENT_RECRUITMENT\") {\n  roles = roles.filter(\n    (role) => !PERSONA.has(role.toLowerCase())\n  );\n}\n\n// Use category defaults if no valid roles remain\nif (roles.length === 0 && ROLE_DEFAULTS[category]) {\n  roles = [...ROLE_DEFAULTS[category]];\n}\n\n// Normalize exclusion keywords\nconst rawExclusions = Array.isArray(p.exclusion_keywords)\n  ? p.exclusion_keywords\n  : [];\n\nconst exclusions = [\n  ...new Set(\n    rawExclusions\n      .map((item) => String(item).trim().toLowerCase())\n      .filter(Boolean)\n  )\n];\n\n// 5. Check contradictions (FR-02)\nfor (const exclusion of exclusions) {\n  const industryConflict = industry\n    .toLowerCase()\n    .includes(exclusion);\n\n  const roleConflict = roles.some((role) =>\n    role.toLowerCase().includes(exclusion)\n  );\n\n  if (industryConflict || roleConflict) {\n    errors.push(\n      `ERR_CONTRADICTION: exclusion \"${exclusion}\" overlaps target industry/roles`\n    );\n  }\n}\n\n// 6. Compile search queries (FR-03)\nlet compiled = [];\n\nif (category === \"B2B_LEAD_GEN\") {\n  compiled = [\n    `\"web development agency\" ${geography} founder -site:linkedin.com -site:naukri.com -site:clutch.co`,\n    `\"software development company\" ${geography} \"our team\" founder -site:linkedin.com -site:clutch.co`\n  ];\n} else if (category === \"TALENT_RECRUITMENT\") {\n  // Candidate-intent phrasing; role filtering occurs during extraction/scoring.\n  compiled = [\n    `site:reddit.com (intitle:\"looking for internship\" OR intitle:\"seeking internship\" OR intitle:\"open to work\" OR intitle:\"for hire\" OR intitle:\"my portfolio\") (AI OR automation OR n8n OR \"machine learning\")`\n  ];\n} else {\n  compiled = [\n    `\"${industry}\" \"${geography}\"`\n  ];\n}\n\n// 7. Generate deterministic campaign ID\n// Case- and role-order-insensitive\nconst core = {\n  category,\n  industry: industry.toLowerCase(),\n  geography: geography.toLowerCase(),\n  size,\n  roles: roles.map((role) => role.toLowerCase()).sort(),\n  exclusions: [...exclusions].sort(),\n  max,\n  minScore\n};\n\nlet h = 5381;\n\nfor (const ch of JSON.stringify(core)) {\n  h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;\n}\n\nconst campaign_id =\n  `CMP-${new Date().getFullYear()}-${h\n    .toString(36)\n    .toUpperCase()\n    .padStart(4, \"0\")\n    .slice(-4)}`;\n\nif (!/^CMP-[0-9]{4}-[A-Z0-9]{4}$/.test(campaign_id)) {\n  errors.push(\"ERR_BAD_CAMPAIGN_ID\");\n}\n\n// 8. Return normalized campaign configuration\nreturn [\n  {\n    json: {\n      campaign_id,\n      task_category: category,\n      target_industry: industry,\n      target_geography: geography,\n      company_size_range: size,\n      target_roles: roles,\n      exclusion_keywords: exclusions,\n      max_leads_limit: max,\n      min_lead_score: minScore,\n      compiled_queries: compiled,\n      clamped_fields: [...new Set(clamped)],\n      config_valid: errors.length === 0,\n      config_errors: errors,\n      source_prompt: prompt,\n      created_at: new Date().toISOString()\n    }\n  }\n];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3056,
-        336
+        -64,
+        -528
       ],
-      "id": "0ca18ce2-4371-47fd-b698-3ccc60c8dcb8",
+      "id": "1074b997-1f89-4a05-8b1e-32c7b60f2573",
       "name": "Parameter Normalizer"
     },
     {
@@ -95,10 +95,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -3440,
-        432
+        -448,
+        -432
       ],
-      "id": "6d80faf8-69cd-4a6c-9788-6bf7c0bab960",
+      "id": "d01ec838-947c-4639-8826-5680d0802e7d",
       "name": "Prompt Not Empty"
     },
     {
@@ -129,10 +129,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -2896,
-        304
+        96,
+        -560
       ],
-      "id": "77301b8e-c8f2-4be4-8caf-f742069781f6",
+      "id": "562bd587-7143-47f7-8709-805069f6a024",
       "name": "Config Valid"
     },
     {
@@ -142,10 +142,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2704,
-        208
+        288,
+        -656
       ],
-      "id": "208406fd-d7be-4c4d-928e-3131559e4fa0",
+      "id": "fcd95101-c3d9-4b6d-9863-18b2caeeaa84",
       "name": "Split Queries"
     },
     {
@@ -182,15 +182,22 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          }
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -2528,
-        208
+        464,
+        -656
       ],
-      "id": "6fa3c4bb-775f-4c57-8c35-8f364621b9b0",
+      "id": "bdec6e8a-87dd-4212-84c8-e0de9c70d3da",
       "name": "SerpAPI Request",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -209,10 +216,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2176,
-        224
+        816,
+        -640
       ],
-      "id": "63b407af-e883-4c73-a3c6-8dbf4404d2ab",
+      "id": "4c72d783-759e-4e57-8ffb-2f82e28d2eb9",
       "name": "Extract Hits"
     },
     {
@@ -242,10 +249,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -2368,
-        224
+        624,
+        -640
       ],
-      "id": "caf36717-143a-42a1-8c93-a311ae37e891",
+      "id": "3b7ba46d-78d1-434a-998f-adb85a8ea962",
       "name": "Is B2B?"
     },
     {
@@ -255,10 +262,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2368,
-        464
+        624,
+        -400
       ],
-      "id": "bf1c2d2b-dff5-41c2-a2b5-4ecdec888bc0",
+      "id": "dbc21c6b-f50d-483c-a24a-115cafdee8f0",
       "name": "Extract Reddit Hits"
     },
     {
@@ -285,16 +292,22 @@
               "responseFormat": "text"
             }
           },
-          "timeout": 10000
+          "timeout": 10000,
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -1984,
-        224
+        1008,
+        -640
       ],
-      "id": "708ca948-9c10-40ff-a1d1-3a29c58ca2ec",
+      "id": "c9ae2710-1e5d-454e-bf05-fc01837d6273",
       "name": "Scrape Page",
       "retryOnFail": false,
       "onError": "continueRegularOutput"
@@ -306,10 +319,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1840,
-        224
+        1152,
+        -640
       ],
-      "id": "d752e90a-b9fd-4239-83e2-d20cab52db39",
+      "id": "fcf707d5-8831-403d-98ce-6110d014d606",
       "name": "Clean Page Text"
     },
     {
@@ -319,10 +332,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2160,
-        464
+        832,
+        -400
       ],
-      "id": "0f6503d8-a2b6-4f16-8ed2-b602a6ce9a51",
+      "id": "c62fcddd-3d2e-448f-9776-1ae02f8bed54",
       "name": "Reddit Text From SERP"
     },
     {
@@ -332,10 +345,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -992,
-        224
+        2000,
+        -640
       ],
-      "id": "ba75e19e-8808-454f-b369-093a6c83672d",
+      "id": "a32fef2b-134f-4545-b416-9cdd500b6348",
       "name": "Build LLM Context"
     },
     {
@@ -359,10 +372,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -592,
-        208
+        2400,
+        -656
       ],
-      "id": "fb2b1b77-24f5-404c-8762-bf76a8f797f6",
+      "id": "5305b5f5-4dd2-48da-b5c4-779c31ca2671",
       "name": "Groq Extract",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -386,10 +399,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -416,
-        224
+        2576,
+        -640
       ],
-      "id": "6ad8d1ff-8a2a-442c-aae3-58fcdf33e395",
+      "id": "e481f1a8-bc0c-448b-b7b5-d4021747475b",
       "name": "Verify Extraction"
     },
     {
@@ -420,10 +433,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -832,
-        224
+        2160,
+        -640
       ],
-      "id": "51d499ae-7065-4b81-8c13-858d5b32070d",
+      "id": "240bc8da-bdc2-42e4-8a83-7661cdf28a34",
       "name": "Has Context?"
     },
     {
@@ -433,10 +446,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1648,
-        224
+        1344,
+        -640
       ],
-      "id": "9a490bf4-08e0-43c4-84aa-1a3c70afc6d4",
+      "id": "e762661e-766d-4030-8f35-b9f7693cb0e2",
       "name": "Mark Unusable Pages"
     },
     {
@@ -467,10 +480,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -144,
-        224
+        2848,
+        -640
       ],
-      "id": "4f664b6e-5ef9-4e8b-b2d3-b822d1eeeb10",
+      "id": "33765ef3-0fd4-4153-b113-07ad1f31619b",
       "name": "Needs Retry?"
     },
     {
@@ -494,10 +507,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        0,
-        0
+        2992,
+        -864
       ],
-      "id": "200499c4-50af-40e7-bbad-e3b9715d5c14",
+      "id": "d6d0375a-d4b6-43c0-b2a5-279984f37216",
       "name": "Groq Extract (fallback)",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -521,10 +534,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        176,
-        0
+        3168,
+        -864
       ],
-      "id": "48184c61-7995-4cd0-b3c1-884c45820146",
+      "id": "73cb5b78-f2aa-4d18-8b30-44266eb9aabd",
       "name": "Verify Extraction (fallback)"
     },
     {
@@ -532,10 +545,10 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        112,
-        256
+        3104,
+        -608
       ],
-      "id": "ca487557-df29-4761-b9ce-d1f6f1f2a90c",
+      "id": "fa7ba235-9cfc-4b1c-8c61-9abc8322f7b8",
       "name": "Merge Extractions"
     },
     {
@@ -545,10 +558,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        288,
-        256
+        3280,
+        -608
       ],
-      "id": "b4d5dcb5-ef42-4b70-a5e1-8e28a59e8f53",
+      "id": "f6572d65-68a0-40f0-87fd-2c58f5aa4e10",
       "name": "Validation Controller"
     },
     {
@@ -558,10 +571,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        352,
-        496
+        3344,
+        -368
       ],
-      "id": "09743a4d-4601-4eca-a051-f79e4659ba30",
+      "id": "6eb7c46a-038d-4f52-8052-264e31690918",
       "name": "Scoring Engine"
     },
     {
@@ -666,10 +679,10 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        912,
-        480
+        3904,
+        -384
       ],
-      "id": "1cb77ec1-bac6-459b-8345-54de6e63b2ef",
+      "id": "059f71af-c640-47a2-9c6c-95fa17f6127a",
       "name": "Score Router"
     },
     {
@@ -679,10 +692,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        544,
-        496
+        3536,
+        -368
       ],
-      "id": "96c45636-7c8b-4b5f-b7e4-78dceaeb07e3",
+      "id": "e9a5bde7-ebe4-45ec-9bb0-fae826567fd2",
       "name": "Dedup Check"
     },
     {
@@ -806,10 +819,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        -1984,
-        32
+        1008,
+        -832
       ],
-      "id": "e3071c43-5b9e-4eb2-8f0a-7fc812da7e25",
+      "id": "523d5053-d892-45a4-9128-c4b632f772cb",
       "name": "Write Raw",
       "retryOnFail": false,
       "credentials": {
@@ -827,10 +840,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        720,
-        496
+        3712,
+        -368
       ],
-      "id": "b873bde2-df4d-4673-9296-c26ebf34ece7",
+      "id": "9ec96b28-4c57-4afa-b0d1-d33120f7f4e5",
       "name": "Prepare Rows"
     },
     {
@@ -1007,10 +1020,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1568,
-        224
+        4560,
+        -640
       ],
-      "id": "0979d942-f695-41f3-acb7-bd3f33215fb4",
+      "id": "36070afe-a574-442d-9dde-e3093bc0dd16",
       "name": "Write Master",
       "credentials": {
         "googleSheetsOAuth2Api": {
@@ -1154,10 +1167,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1280,
-        480
+        4272,
+        -384
       ],
-      "id": "a780bffb-466a-4132-a5c9-a6d6b3bcf84f",
+      "id": "903afa68-7975-48ed-bda8-9e3fbcd43dd8",
       "name": "Write Review",
       "credentials": {
         "googleSheetsOAuth2Api": {
@@ -1271,10 +1284,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1280,
-        656
+        4272,
+        -208
       ],
-      "id": "2cb1d4f2-c3ff-4838-be55-bfe9d3d49d23",
+      "id": "4d08fe85-dbd3-42cb-8c31-69ba7b0334ca",
       "name": "Write Quarantine",
       "credentials": {
         "googleSheetsOAuth2Api": {
@@ -1290,10 +1303,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1472,
-        224
+        1520,
+        -640
       ],
-      "id": "53e4b4c4-09d6-41ac-8873-769dfb622985",
+      "id": "cf08e427-ce05-4dc5-ad94-b07050b4b096",
       "name": "Add About URL"
     },
     {
@@ -1320,16 +1333,22 @@
               "responseFormat": "text"
             }
           },
-          "timeout": 10000
+          "timeout": 10000,
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -1312,
-        224
+        1680,
+        -640
       ],
-      "id": "760ce6cc-e800-4c12-bc0d-2af590cc1855",
+      "id": "a0be7239-db51-4be9-bf30-03a814580127",
       "name": "Scrape About",
       "retryOnFail": false,
       "onError": "continueRegularOutput"
@@ -1341,10 +1360,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1168,
-        224
+        1824,
+        -640
       ],
-      "id": "23bc380f-8d25-4b91-bf11-cb50a629fc87",
+      "id": "59efb20a-0c9a-412d-8d8e-cf54718ee9b8",
       "name": "Merge About"
     },
     {
@@ -1368,10 +1387,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        1120,
-        224
+        4112,
+        -640
       ],
-      "id": "c9302a99-db46-44b5-8a4d-cc892753406e",
+      "id": "7b19e1cb-13f4-45b7-a18b-609922918338",
       "name": "Read Master Domains",
       "executeOnce": true,
       "alwaysOutputData": true,
@@ -1389,10 +1408,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1344,
-        224
+        4336,
+        -640
       ],
-      "id": "ee7b8479-b003-43cc-8fd4-fa8ad8e464c2",
+      "id": "9d8d126c-39df-44be-9711-aad9d0313767",
       "name": "Drop Existing Master"
     },
     {
@@ -1402,11 +1421,53 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -592,
-        432
+        2400,
+        -440
       ],
-      "id": "f7faddd3-f93f-435d-b726-4e954c5678e2",
+      "id": "f8682c17-67be-42cb-b133-d81c7dd5efd2",
       "name": "Mark No Context"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "17685210-44be-4bf1-9789-7e0989b668ab",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1056,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1b07613c-699c-46dc-991f-ca4827e802ff",
+              "name": "campaign_prompt",
+              "value": "Find 30 IT services companies in Pune, founders and CTOs only",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7a1bd6df-9101-47f1-b961-aeb8e8895785",
+      "name": "Scheduled Campaign",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -848,
+        -208
+      ]
     }
   ],
   "pinData": {},
@@ -1701,6 +1762,11 @@
         ]
       ]
     },
+    "Write Raw": {
+      "main": [
+        []
+      ]
+    },
     "Prepare Rows": {
       "main": [
         [
@@ -1802,17 +1868,41 @@
           }
         ]
       ]
+    },
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Scheduled Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scheduled Campaign": {
+      "main": [
+        [
+          {
+            "node": "Prompt Not Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "timezone": "Asia/Kolkata"
   },
-  "versionId": "c991502f-ef02-46e5-a48b-6bd8d538a393",
+  "versionId": "19fbb7b4-0286-42fb-a937-5a2ca1e817c6",
   "meta": {
+    "templateCredsSetupCompleted": true,
     "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
   },
-  "id": "6oHclcoLXJlJjiI8",
+  "id": "KuYvxaUX6vyL0HWh",
   "tags": []
 }

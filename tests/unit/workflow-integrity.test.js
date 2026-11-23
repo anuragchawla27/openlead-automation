@@ -11,7 +11,7 @@ T('WF: every connection points to an existing node', badConn.length === 0, badCo
 T('WF: unique node names and ids', names.size === wf.nodes.length && new Set(wf.nodes.map(n => n.id)).size === wf.nodes.length);
 T('WF: no pinned data (nothing stale replays)', Object.keys(wf.pinData || {}).length === 0);
 T('WF: workflow not active (manual/dev)', wf.active === false);
-const orphan = wf.nodes.filter(n => n.type !== 'n8n-nodes-base.formTrigger' && !Object.values(conn).some(v => v.main.some(br => br.some(t => t.node === n.name)))).map(n => n.name);
+const orphan = wf.nodes.filter(n => !/Trigger$/.test(n.type) && !Object.values(conn).some(v => v.main.some(br => br.some(t => t.node === n.name)))).map(n => n.name);
 T('WF: no orphan nodes except the trigger', orphan.length === 0, orphan.join());
 const dead = wf.nodes.filter(n => !conn[n.name] || conn[n.name].main.every(b => b.length === 0)).map(n => n.name);
 console.log('INFO terminal nodes: ' + dead.join(', '));
