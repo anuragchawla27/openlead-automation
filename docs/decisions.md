@@ -182,3 +182,17 @@ Known gaps:
 - Web scores all reach 100, so the score does not separate strong from weak leads.
 - A page linking a different GitHub handle than its own URL needs a human check.
 - Fewer than 20 talent leads so far. Planned: wider web queries and a higher hit limit.
+
+## Day 19b: Track B talent yield and precision
+
+- Shared quote rule: the same evidence quote on 2 or more different snippet-only posts in one run rejects all of them as `SHARED_QUOTE`, because a Google snippet can be stitched from another thread. Verified live, 4 stitched rows rejected, twice.
+- Web path takes only personal sites: github.io, netlify.app, vercel.app and similar, a GitHub profile, or a page titled portfolio, resume or CV. Hits from the Reddit-scoped queries are ignored because Google drops `site:` on them and returns news and job boards. The hit limit is shared one per query in turn.
+- Seeking-intent rule: a snippet lead is kept only if its own quote says the person is seeking work. A post asking for project ideas is rejected as `NO_SEEKING_INTENT`.
+- Talent search now runs 8 queries (3 Reddit, 5 web portfolio searches).
+- Verified live: 11 personal-page leads auto-qualified, 14 company, research and unrelated pages rejected, no unverifiable claim passed.
+
+Known gaps:
+- 16 talent leads in the sheet against a target of 20 or more.
+- Role fit is generous (a software internship seeker scored 100) and real-page scores saturate, so a person must confirm each lead.
+- The model's quote varies between runs, so the same Reddit post can be REVIEW in one run and rejected in the next. Writes upsert and never remove old rows.
+- Reddit snippet leads are REVIEW only and need a person to confirm.

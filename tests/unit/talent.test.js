@@ -95,9 +95,10 @@ T('VER: output never contains an email or phone field', !Object.keys(g).some(k =
 // ---------- Discovery queries for Track B (Google ignores site: when the query is too strict)
 const normOut = (extra = {}) => run('Parameter Normalizer', [{ choices: [{ message: { content: JSON.stringify({ task_category: 'TALENT_RECRUITMENT', target_industry: null, target_geography: null, company_size_range: 'ALL', target_roles: ['AI Automation Intern'], exclusion_keywords: [], max_leads_limit: 5, min_lead_score: null, ...extra }) } }] }], { 'Prompt Not Empty': [{ campaign_prompt: 'x' }] })[0];
 const tq = normOut().compiled_queries;
-T('Q: talent campaign compiles 5 queries (3 Reddit + 2 web)', tq.length === 5, String(tq.length));
+T('Q: talent campaign compiles 8 queries (3 Reddit + 5 web portfolio searches)', tq.length === 8, String(tq.length));
+T('Q: web queries cover github.io, netlify.app and vercel.app portfolios', tq.some(q => /site:netlify\.app/.test(q)) && tq.some(q => /site:vercel\.app/.test(q)) && tq.filter(q => /site:github\.io/.test(q)).length === 3);
 T('Q: the first 3 talent queries are scoped to a subreddit comments path', tq.slice(0, 3).every(q => /^site:reddit\.com\/r\/[A-Za-z0-9_]+\/comments /.test(q)), tq.join(' | '));
-T('Q: the 2 web queries target personal pages (github.io, portfolio) and exclude job boards', /^site:github\.io /.test(tq[3]) && /portfolio/.test(tq[4]) && /-site:linkedin\.com/.test(tq[4]) && /-site:indeed\.com/.test(tq[4]), tq.slice(3).join(' | '));
+T('Q: the 5 web queries target personal-site hosts only (github.io, netlify.app, vercel.app)', tq.slice(3).every(q => /^site:(github\.io|netlify\.app|vercel\.app) /.test(q)) && tq.slice(0, 3).every(q => /^site:reddit\.com\/r\//.test(q)), tq.join(' | '));
 T('Q: no intitle: operators or long exact-phrase lists', tq.every(q => !/intitle:/.test(q) && q.length < 150), tq.map(q => q.length).join());
 T('Q: talent queries mention AI or automation', tq.every(q => /AI|automation|machine learning|n8n/i.test(q)));
 T('Q: B2B queries are unchanged', normOut({ task_category: 'B2B_LEAD_GEN' }).compiled_queries[0].includes('web development agency'));
@@ -187,4 +188,40 @@ T('WVER: reddit rows still quarantine under reddit.com/r/<sub>', verify(groq({ .
 const wtv2 = N['Write Talent'].parameters.columns.value;
 T('TB: Write Talent maps source_platform and candidate_name', wtv2.source_platform && wtv2.candidate_name);
 T('TB: no email or phone column anywhere in the talent write', !/email|phone/i.test(JSON.stringify(wtv2)));
+
+
+// ---------- shared quote (snippet stitched across threads)
+{
+  const ev = "Looking for an AI/ML internship from Dec-March (3+ months)";
+  const mk = (id, title) => ({ ...ctx(http(post()))[0], post_id: id, title, post_text: title + '\n' + ev, text_source: 'serp_title_snippet', source_platform: 'reddit', source_url: 'https://www.reddit.com/r/x/comments/' + id + '/t/' });
+  const bases = [mk('p1', 'AI/ML internship fresher'), mk('p2', 'Just joined an automation role'), mk('p3', 'Another AI thread')];
+  const mdl = { is_job_seeker: true, seeking_role: 'AI/ML internship', skills: [], location: null, portfolio_links: [], evidence_quote: ev, person_name: null };
+  const out = run('Verify & Score Talent', [groq(mdl), groq(mdl), groq({ ...mdl, evidence_quote: 'AI/ML internship fresher' })], { 'Parameter Normalizer': [CFG], 'Merge Talent Inputs': bases });
+  T('SQ: the same quote on 2 posts rejects both as SHARED_QUOTE', out[0].route === 'REJECTED' && out[0].reasons === 'SHARED_QUOTE' && out[1].route === 'REJECTED' && out[1].reasons === 'SHARED_QUOTE' && out[0].evidence === '' && out[0].lead_score === 0, JSON.stringify(out.map(o => [o.route, o.reasons])));
+  T('SQ: a post with its own unique quote is not touched', out[2].route !== 'REJECTED' || out[2].reasons !== 'SHARED_QUOTE', JSON.stringify(out[2].reasons));
+  const one = run('Verify & Score Talent', [groq(mdl)], { 'Parameter Normalizer': [CFG], 'Merge Talent Inputs': [bases[0]] });
+  T('SQ: a single post with that quote is kept', one[0].reasons !== 'SHARED_QUOTE' && one[0].route !== 'REJECTED', JSON.stringify(one[0]));
+}
+
+
+// ---------- web hits: personal sites only, Reddit queries ignored, fair share per query
+{
+  const mkQ = (q, links) => ({ search_parameters: { q }, organic_results: links.map(([link, title, snippet]) => ({ link, title, snippet: snippet || 'x' })) });
+  const cfg = n => ({ 'Split Queries': [{ campaign_id: 'CMP-2026-AAAA', max_leads_limit: n }] });
+  const junk = run('Extract Web Talent Hits', [mkQ('site:reddit.com/r/n8n/comments "looking for"', [['https://jane.github.io/', 'Jane | Portfolio'], ['https://x.org/a', 'News']])], cfg(10));
+  T('WEB2: hits from Reddit-scoped queries are ignored', junk.length === 0);
+  const filt = run('Extract Web Talent Hits', [mkQ('site:github.io p', [['https://www.scribd.com/document/1/AI-Intern', 'AI Automation Intern | PDF'], ['https://myinternships.in/roles/ai', 'Hire AI interns'], ['https://www.goodreads.com/book/1', 'Looking for Alaska'], ['https://jane.github.io/', 'Jane'], ['https://jane.netlify.app/', 'Jane'], ['https://someone.vercel.app/', 'S'], ['https://example.com/jane-portfolio', 'Jane Portfolio'], ['https://example.com/jane-resume', 'x'], ['https://openai.com/', 'OpenAI']])], cfg(20));
+  T('WEB2: only personal hosts or portfolio/resume/CV pages are kept', JSON.stringify(filt.map(f => f.source_url)) === JSON.stringify(['https://jane.github.io/', 'https://jane.netlify.app/', 'https://someone.vercel.app/', 'https://example.com/jane-portfolio', 'https://example.com/jane-resume']), JSON.stringify(filt.map(f => f.source_url)));
+  const rr = run('Extract Web Talent Hits', [mkQ('site:github.io a', [['https://a1.github.io/'], ['https://a2.github.io/'], ['https://a3.github.io/']]), mkQ('site:netlify.app b', [['https://b1.netlify.app/'], ['https://b2.netlify.app/']])], cfg(4));
+  T('WEB2: the limit is shared fairly, one hit per query in turn', JSON.stringify(rr.map(f => f.source_url)) === JSON.stringify(['https://a1.github.io/', 'https://b1.netlify.app/', 'https://a2.github.io/', 'https://b2.netlify.app/']), JSON.stringify(rr.map(f => f.source_url)));
+}
+
+// ---------- snippet leads need their own quote to say the person is seeking work
+{
+  const SNIP = { text_source: 'serp_title_snippet', post_text: "Looking for n8n automation project ideas to build a job-ready portfolio\nNow I'm looking for project ideas to include in my portfolio for job applications", title: 'Looking for n8n automation project ideas', source_platform: 'reddit', subreddit: 'n8n' };
+  const noIntent = verify(groq({ is_job_seeker: true, seeking_role: null, skills: [], location: null, portfolio_links: [], evidence_quote: "Now I'm looking for project ideas to include in my portfolio for job applications", person_name: null }), SNIP);
+  T('SEEK: a snippet quote asking for project ideas is not seeking work, rejected', noIntent.route === 'REJECTED' && noIntent.reasons === 'NO_SEEKING_INTENT', JSON.stringify(noIntent));
+  const yesIntent = verify(groq({ is_job_seeker: true, seeking_role: null, skills: [], location: null, portfolio_links: [], evidence_quote: "Now I'm looking for a job as an AI intern", person_name: null }), { ...SNIP, post_text: "Looking for n8n automation ideas\nNow I'm looking for a job as an AI intern" });
+  T('SEEK: a snippet quote stating the person wants an internship or job is kept', yesIntent.reasons !== 'NO_SEEKING_INTENT', JSON.stringify(yesIntent));
+}
 summary();
