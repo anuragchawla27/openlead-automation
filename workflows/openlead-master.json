@@ -56,7 +56,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ROLE_DEFAULTS = {\n  B2B_LEAD_GEN: [\"Founder\", \"CEO\", \"CTO\", \"Business Development Director\"],\n  TALENT_RECRUITMENT: [\"AI Automation Intern\", \"AI Engineer Intern\"],\n  CUSTOM_RESEARCH: [\"Founder\"]\n};\n\nconst SIZES = [\"1-10\", \"11-50\", \"51-200\", \"201-500\", \"501+\", \"ALL\"];\n\nconst titleCase = (value) =>\n  String(value)\n    .replace(/\\s+/g, \" \")\n    .trim()\n    .split(\" \")\n    .filter(Boolean)\n    .map((word) =>\n      word.length <= 3 && word === word.toUpperCase()\n        ? word\n        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()\n    )\n    .join(\" \");\n\nconst prompt = $(\"Prompt Not Empty\").first().json.campaign_prompt;\n\n// 0. Reject empty prompts (ERR_EMPTY_PROMPT)\nif (!prompt || !String(prompt).trim()) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_EMPTY_PROMPT\"],\n        source_prompt: prompt || \"\"\n      }\n    }\n  ];\n}\n\n// 1. Parse model output safely\nlet p;\n\ntry {\n  const content = $input.first()?.json?.choices?.[0]?.message?.content;\n\n  if (typeof content !== \"string\" || !content.trim()) {\n    throw new Error(\"Missing or empty model response content\");\n  }\n\n  const txt = content\n    .replace(/```(?:json)?/gi, \"\")\n    .trim();\n\n  p = JSON.parse(txt);\n\n  if (!p || typeof p !== \"object\" || Array.isArray(p)) {\n    throw new Error(\"Model response must be a JSON object\");\n  }\n} catch (e) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_PARSE_FAILED: \" + e.message],\n        source_prompt: prompt\n      }\n    }\n  ];\n}\n\nconst errors = [];\nconst clamped = [];\n\n// 2. Validate category\nconst category = p.task_category;\n\nif (!Object.prototype.hasOwnProperty.call(ROLE_DEFAULTS, category)) {\n  errors.push(\"ERR_BAD_CATEGORY\");\n}\n\n// 3. Validate and clamp bounds (FR-02)\nlet max = Number.isInteger(p.max_leads_limit)\n  ? p.max_leads_limit\n  : 20;\n\nif (max > 100) {\n  max = 100;\n  clamped.push(\"max_leads_limit\");\n}\n\nif (max < 1) {\n  max = 1;\n  clamped.push(\"max_leads_limit\");\n}\n\nlet minScore = Number.isInteger(p.min_lead_score)\n  ? p.min_lead_score\n  : 80;\n\nif (minScore > 100) {\n  minScore = 100;\n  clamped.push(\"min_lead_score\");\n}\n\nif (minScore < 1) {\n  minScore = 1;\n  clamped.push(\"min_lead_score\");\n}\n\n// 4. Apply defaults and normalize values\nconst industry = titleCase(\n  p.target_industry || \"Information Technology Services\"\n);\n\nconst geography = titleCase(\n  p.target_geography || \"India\"\n);\n\nlet size = SIZES.includes(p.company_size_range)\n  ? p.company_size_range\n  : \"ALL\";\n\nif (category === \"B2B_LEAD_GEN\" && size === \"ALL\") {\n  size = \"11-50\";\n}\n\nconst rawRoles = Array.isArray(p.target_roles)\n  ? p.target_roles\n  : [];\n\nlet roles = rawRoles\n  .map((role) => titleCase(role))\n  .filter(Boolean);\n\n// Track B: remove persona-only words for talent recruitment\nconst PERSONA = new Set([\n  \"student\",\n  \"students\",\n  \"fresher\",\n  \"freshers\",\n  \"candidate\",\n  \"candidates\",\n  \"people\",\n  \"person\",\n  \"developer\",\n  \"developers\",\n  \"intern\",\n  \"interns\"\n]);\n\nif (category === \"TALENT_RECRUITMENT\") {\n  roles = roles.filter(\n    (role) => !PERSONA.has(role.toLowerCase())\n  );\n}\n\n// Use category defaults if no valid roles remain\nif (roles.length === 0 && ROLE_DEFAULTS[category]) {\n  roles = [...ROLE_DEFAULTS[category]];\n}\n\n// Normalize exclusion keywords\nconst rawExclusions = Array.isArray(p.exclusion_keywords)\n  ? p.exclusion_keywords\n  : [];\n\nconst exclusions = [\n  ...new Set(\n    rawExclusions\n      .map((item) => String(item).trim().toLowerCase())\n      .filter(Boolean)\n  )\n];\n\n// 5. Check contradictions (FR-02)\nfor (const exclusion of exclusions) {\n  const industryConflict = industry\n    .toLowerCase()\n    .includes(exclusion);\n\n  const roleConflict = roles.some((role) =>\n    role.toLowerCase().includes(exclusion)\n  );\n\n  if (industryConflict || roleConflict) {\n    errors.push(\n      `ERR_CONTRADICTION: exclusion \"${exclusion}\" overlaps target industry/roles`\n    );\n  }\n}\n\n// 6. Compile search queries (FR-03)\nlet compiled = [];\n\nif (category === \"B2B_LEAD_GEN\") {\n  compiled = [\n    `\"web development agency\" ${geography} founder -site:linkedin.com -site:naukri.com -site:clutch.co`,\n    `\"software development company\" ${geography} \"our team\" founder -site:linkedin.com -site:clutch.co`\n  ];\n} else if (category === \"TALENT_RECRUITMENT\") {\n  // Short, subreddit-scoped queries. Long OR-lists with exact title phrases make Google drop site: and return job boards.\n  compiled = [\n    `site:reddit.com/r/developersIndia/comments internship AI automation \"looking for\"`,\n    `site:reddit.com/r/forhire/comments AI automation n8n intern OR junior`,\n    `site:reddit.com/r/n8n/comments \"looking for\" internship OR \"open to work\" OR portfolio`,\n    `site:reddit.com/r/cscareerquestionsIN/comments internship AI \"machine learning\" \"looking for\"`,\n    `site:reddit.com/r/internships/comments AI OR \"machine learning\" OR automation \"looking for\" internship`\n  ];\n} else {\n  compiled = [\n    `\"${industry}\" \"${geography}\"`\n  ];\n}\n\n// 7. Generate deterministic campaign ID\n// Case- and role-order-insensitive\nconst core = {\n  category,\n  industry: industry.toLowerCase(),\n  geography: geography.toLowerCase(),\n  size,\n  roles: roles.map((role) => role.toLowerCase()).sort(),\n  exclusions: [...exclusions].sort(),\n  max,\n  minScore\n};\n\nlet h = 5381;\n\nfor (const ch of JSON.stringify(core)) {\n  h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;\n}\n\nconst campaign_id =\n  `CMP-${new Date().getFullYear()}-${h\n    .toString(36)\n    .toUpperCase()\n    .padStart(4, \"0\")\n    .slice(-4)}`;\n\nif (!/^CMP-[0-9]{4}-[A-Z0-9]{4}$/.test(campaign_id)) {\n  errors.push(\"ERR_BAD_CAMPAIGN_ID\");\n}\n\n// 8. Return normalized campaign configuration\nreturn [\n  {\n    json: {\n      campaign_id,\n      task_category: category,\n      target_industry: industry,\n      target_geography: geography,\n      company_size_range: size,\n      target_roles: roles,\n      exclusion_keywords: exclusions,\n      max_leads_limit: max,\n      min_lead_score: minScore,\n      compiled_queries: compiled,\n      clamped_fields: [...new Set(clamped)],\n      config_valid: errors.length === 0,\n      config_errors: errors,\n      source_prompt: prompt,\n      created_at: new Date().toISOString()\n    }\n  }\n];"
+        "jsCode": "const ROLE_DEFAULTS = {\n  B2B_LEAD_GEN: [\"Founder\", \"CEO\", \"CTO\", \"Business Development Director\"],\n  TALENT_RECRUITMENT: [\"AI Automation Intern\", \"AI Engineer Intern\"],\n  CUSTOM_RESEARCH: [\"Founder\"]\n};\n\nconst SIZES = [\"1-10\", \"11-50\", \"51-200\", \"201-500\", \"501+\", \"ALL\"];\n\nconst titleCase = (value) =>\n  String(value)\n    .replace(/\\s+/g, \" \")\n    .trim()\n    .split(\" \")\n    .filter(Boolean)\n    .map((word) =>\n      word.length <= 3 && word === word.toUpperCase()\n        ? word\n        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()\n    )\n    .join(\" \");\n\nconst prompt = $(\"Prompt Not Empty\").first().json.campaign_prompt;\n\n// 0. Reject empty prompts (ERR_EMPTY_PROMPT)\nif (!prompt || !String(prompt).trim()) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_EMPTY_PROMPT\"],\n        source_prompt: prompt || \"\"\n      }\n    }\n  ];\n}\n\n// 1. Parse model output safely\nlet p;\n\ntry {\n  const content = $input.first()?.json?.choices?.[0]?.message?.content;\n\n  if (typeof content !== \"string\" || !content.trim()) {\n    throw new Error(\"Missing or empty model response content\");\n  }\n\n  const txt = content\n    .replace(/```(?:json)?/gi, \"\")\n    .trim();\n\n  p = JSON.parse(txt);\n\n  if (!p || typeof p !== \"object\" || Array.isArray(p)) {\n    throw new Error(\"Model response must be a JSON object\");\n  }\n} catch (e) {\n  return [\n    {\n      json: {\n        config_valid: false,\n        config_errors: [\"ERR_PARSE_FAILED: \" + e.message],\n        source_prompt: prompt\n      }\n    }\n  ];\n}\n\nconst errors = [];\nconst clamped = [];\n\n// 2. Validate category\nconst category = p.task_category;\n\nif (!Object.prototype.hasOwnProperty.call(ROLE_DEFAULTS, category)) {\n  errors.push(\"ERR_BAD_CATEGORY\");\n}\n\n// 3. Validate and clamp bounds (FR-02)\nlet max = Number.isInteger(p.max_leads_limit)\n  ? p.max_leads_limit\n  : 20;\n\nif (max > 100) {\n  max = 100;\n  clamped.push(\"max_leads_limit\");\n}\n\nif (max < 1) {\n  max = 1;\n  clamped.push(\"max_leads_limit\");\n}\n\nlet minScore = Number.isInteger(p.min_lead_score)\n  ? p.min_lead_score\n  : 80;\n\nif (minScore > 100) {\n  minScore = 100;\n  clamped.push(\"min_lead_score\");\n}\n\nif (minScore < 1) {\n  minScore = 1;\n  clamped.push(\"min_lead_score\");\n}\n\n// 4. Apply defaults and normalize values\nconst industry = titleCase(\n  p.target_industry || \"Information Technology Services\"\n);\n\nconst geography = titleCase(\n  p.target_geography || \"India\"\n);\n\nlet size = SIZES.includes(p.company_size_range)\n  ? p.company_size_range\n  : \"ALL\";\n\nif (category === \"B2B_LEAD_GEN\" && size === \"ALL\") {\n  size = \"11-50\";\n}\n\nconst rawRoles = Array.isArray(p.target_roles)\n  ? p.target_roles\n  : [];\n\nlet roles = rawRoles\n  .map((role) => titleCase(role))\n  .filter(Boolean);\n\n// Track B: remove persona-only words for talent recruitment\nconst PERSONA = new Set([\n  \"student\",\n  \"students\",\n  \"fresher\",\n  \"freshers\",\n  \"candidate\",\n  \"candidates\",\n  \"people\",\n  \"person\",\n  \"developer\",\n  \"developers\",\n  \"intern\",\n  \"interns\"\n]);\n\nif (category === \"TALENT_RECRUITMENT\") {\n  roles = roles.filter(\n    (role) => !PERSONA.has(role.toLowerCase())\n  );\n}\n\n// Use category defaults if no valid roles remain\nif (roles.length === 0 && ROLE_DEFAULTS[category]) {\n  roles = [...ROLE_DEFAULTS[category]];\n}\n\n// Normalize exclusion keywords\nconst rawExclusions = Array.isArray(p.exclusion_keywords)\n  ? p.exclusion_keywords\n  : [];\n\nconst exclusions = [\n  ...new Set(\n    rawExclusions\n      .map((item) => String(item).trim().toLowerCase())\n      .filter(Boolean)\n  )\n];\n\n// 5. Check contradictions (FR-02)\nfor (const exclusion of exclusions) {\n  const industryConflict = industry\n    .toLowerCase()\n    .includes(exclusion);\n\n  const roleConflict = roles.some((role) =>\n    role.toLowerCase().includes(exclusion)\n  );\n\n  if (industryConflict || roleConflict) {\n    errors.push(\n      `ERR_CONTRADICTION: exclusion \"${exclusion}\" overlaps target industry/roles`\n    );\n  }\n}\n\n// 6. Compile search queries (FR-03)\nlet compiled = [];\n\nif (category === \"B2B_LEAD_GEN\") {\n  compiled = [\n    `\"web development agency\" ${geography} founder -site:linkedin.com -site:naukri.com -site:clutch.co`,\n    `\"software development company\" ${geography} \"our team\" founder -site:linkedin.com -site:clutch.co`\n  ];\n} else if (category === \"TALENT_RECRUITMENT\") {\n  // Short, subreddit-scoped queries. Long OR-lists with exact title phrases make Google drop site: and return job boards.\n  compiled = [\n    `site:reddit.com/r/developersIndia/comments internship AI automation \"looking for\"`,\n    `site:reddit.com/r/n8n/comments \"looking for\" internship OR \"open to work\" OR portfolio`,\n    `site:reddit.com/r/internships/comments AI OR \"machine learning\" OR automation \"looking for\" internship`,\n    `site:github.io portfolio n8n OR \"machine learning\" internship OR \"open to work\"`,\n    `\"AI automation\" intern portfolio \"looking for\" -jobs -site:linkedin.com -site:indeed.com -site:glassdoor.com`\n  ];\n} else {\n  compiled = [\n    `\"${industry}\" \"${geography}\"`\n  ];\n}\n\n// 7. Generate deterministic campaign ID\n// Case- and role-order-insensitive\nconst core = {\n  category,\n  industry: industry.toLowerCase(),\n  geography: geography.toLowerCase(),\n  size,\n  roles: roles.map((role) => role.toLowerCase()).sort(),\n  exclusions: [...exclusions].sort(),\n  max,\n  minScore\n};\n\nlet h = 5381;\n\nfor (const ch of JSON.stringify(core)) {\n  h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;\n}\n\nconst campaign_id =\n  `CMP-${new Date().getFullYear()}-${h\n    .toString(36)\n    .toUpperCase()\n    .padStart(4, \"0\")\n    .slice(-4)}`;\n\nif (!/^CMP-[0-9]{4}-[A-Z0-9]{4}$/.test(campaign_id)) {\n  errors.push(\"ERR_BAD_CAMPAIGN_ID\");\n}\n\n// 8. Return normalized campaign configuration\nreturn [\n  {\n    json: {\n      campaign_id,\n      task_category: category,\n      target_industry: industry,\n      target_geography: geography,\n      company_size_range: size,\n      target_roles: roles,\n      exclusion_keywords: exclusions,\n      max_leads_limit: max,\n      min_lead_score: minScore,\n      compiled_queries: compiled,\n      clamped_fields: [...new Set(clamped)],\n      config_valid: errors.length === 0,\n      config_errors: errors,\n      source_prompt: prompt,\n      created_at: new Date().toISOString()\n    }\n  }\n];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -1535,7 +1535,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-120b\",\n  temperature: 0,\n  reasoning_effort: \"low\",\n  max_completion_tokens: 1000,\n  messages: [\n    { role: \"system\", content: \"You extract facts from a Reddit post written by a person who may be looking for work or an internship. Follow these rules exactly: 1. Use ONLY the text provided. Never use outside knowledge. 2. is_job_seeker is true only if the author says they themselves are looking for a job, internship, freelance work or a collaboration. Employers who are hiring, questions asking for advice, tutorials, and showcases with no job-seeking intent are false. 3. seeking_role: the role the author states they want, copied as written. Null if not stated. 4. skills: tools, languages or techniques the author explicitly names about themselves, copied as written. Maximum 8. Never infer a skill from the role. 5. location: only if the author states it, copied as written. Otherwise null. 6. portfolio_links: URLs for the author's portfolio, GitHub or projects, copied character-for-character from the text. Never construct or guess a URL. 7. evidence_quote: one exact sentence copied from the text that shows they are seeking work or what they can do. It must be an exact substring of the text. Null if none. 8. If the author is not a job seeker, set is_job_seeker=false and every other field null or empty. 9. Output JSON only. No markdown fences.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"talent_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"is_job_seeker\",\"seeking_role\",\"skills\",\"location\",\"portfolio_links\",\"evidence_quote\"],\n    properties: {\n      is_job_seeker: { type: \"boolean\" },\n      seeking_role: { type: [\"string\",\"null\"] },\n      skills: { type: \"array\", items: { type: \"string\" } },\n      location: { type: [\"string\",\"null\"] },\n      portfolio_links: { type: \"array\", items: { type: \"string\" } },\n      evidence_quote: { type: [\"string\",\"null\"] }\n    }\n  } } }\n} }}",
+        "jsonBody": "={{ {\n  model: \"openai/gpt-oss-120b\",\n  temperature: 0,\n  reasoning_effort: \"low\",\n  max_completion_tokens: 1000,\n  messages: [\n    { role: \"system\", content: \"You extract facts from a Reddit post or a personal web page written by a person who may be looking for work or an internship. Follow these rules exactly: 1. Use ONLY the text provided. Never use outside knowledge. 2. is_job_seeker is true only if the author says they themselves are looking for a job, internship, freelance work or a collaboration. Employers who are hiring, company pages, job listings, lists of jobs, questions asking for advice, tutorials, and showcases with no job-seeking intent are false. 3. seeking_role: the role the author states they want, copied as written. Null if not stated. 4. skills: tools, languages or techniques the author explicitly names about themselves, copied as written. Maximum 8. Never infer a skill from the role. 5. location: only if the author states it, copied as written. Otherwise null. 6. portfolio_links: URLs for the author's portfolio, GitHub or projects, copied character-for-character from the text or from the LINKS ON PAGE list. Never construct or guess a URL. 7. evidence_quote: one exact sentence copied from the text that shows they are seeking work or what they can do. It must be an exact substring of the text. Null if none. 8. person_name: the author's or page owner's full name exactly as written in the text, only if it is stated. Null for a Reddit username or if no name is stated. 9. If the author is not a job seeker, set is_job_seeker=false and every other field null or empty. 10. Output JSON only. No markdown fences.\" },\n    { role: \"user\", content: $json.llm_context }\n  ],\n  response_format: { type: \"json_schema\", json_schema: { name: \"talent_extraction\", strict: true, schema: {\n    type: \"object\", additionalProperties: false,\n    required: [\"is_job_seeker\",\"seeking_role\",\"skills\",\"location\",\"portfolio_links\",\"evidence_quote\",\"person_name\"],\n    properties: {\n      is_job_seeker: { type: \"boolean\" },\n      seeking_role: { type: [\"string\",\"null\"] },\n      skills: { type: \"array\", items: { type: \"string\" } },\n      location: { type: [\"string\",\"null\"] },\n      portfolio_links: { type: \"array\", items: { type: \"string\" } },\n      evidence_quote: { type: [\"string\",\"null\"] },\n      person_name: { type: [\"string\",\"null\"] }\n    }\n  } } }\n} }}",
         "options": {
           "batching": {
             "batch": {
@@ -1548,7 +1548,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1552,
+        1672,
         -400
       ],
       "id": "47a7ac5f-f4bd-4bfc-bc88-0f7a43d95326",
@@ -1565,12 +1565,12 @@
     },
     {
       "parameters": {
-        "jsCode": "// Verify & Score Talent: deterministic checks on the model output, then score and route (Track B)\nconst cfg = $('Parameter Normalizer').first().json;\nconst ctx = $('Build Talent Context').all();\nconst MIN_SCORE = cfg.min_lead_score || 80;\n\nconst hash = s => { let h = 5381; for (const c of String(s)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36).toUpperCase(); };\nconst norm = s => String(s || '').replace(/[‐-―−]/g, '-').replace(/[‘’]/g, \"'\").replace(/[“”]/g, '\"').replace(/\\s+/g, ' ').trim().toLowerCase();\nconst esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst hasWord = (text, w) => w.length >= 2 && new RegExp('(^|[^a-z0-9])' + esc(norm(w)) + '($|[^a-z0-9])', 'i').test(text);\nconst AI_VOCAB = /\\b(ai|a\\.i\\.|ml|machine learning|deep learning|nlp|llms?|genai|generative ai|automation|automate|n8n|zapier|langchain|openai|pytorch|tensorflow|scikit-learn|computer vision|data science|prompt engineering|agents?|python|pandas|numpy|hugging ?face|rag|vector database|make\\.com)\\b/i;\nconst JUNIOR = /\\b(student|intern|internship|fresher|entry[- ]level|junior|beginner|learning|my portfolio)\\b/i;\nconst SENIOR = /for hire|\\$\\s?\\d+[^\\s]*\\s?\\/\\s?hr|\\b\\d+\\+?\\s*years\\b|\\bsenior\\b|\\bspecialist\\b/i;\nconst now = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 19).replace('T', ' ') + ' IST';\n\nreturn $input.all().map((item, i) => {\n  const base = ctx[i] ? ctx[i].json : {};\n  const text = norm(base.post_text);\n  const rejectedRow = (reason) => ({ json: {\n    talent_id: 'TLN-' + hash(base.post_id), post_id: base.post_id, post_url: base.source_url, author_handle: base.author_handle || '',\n    subreddit: base.subreddit || '', title: base.title || '', seeking_role: '', skills: '', portfolio_links: '', experience_level: '', location: '', evidence: '',\n    lead_score: 0, route: 'REJECTED', reasons: reason, campaign_id: base.campaign_id, post_fetch_status: base.post_fetch_status, discovered_at: now, text_source: base.text_source || '', posted_at: base.posted_at || '',\n    result_id: base.result_id, rejection_id: 'REJ-' + hash(base.post_id), normalized_domain: 'reddit.com/r/' + (base.subreddit || ''), reason_text: reason, now\n  } });\n\n  // 1. model output must parse\n  let p;\n  try {\n    const c = item.json && item.json.choices && item.json.choices[0] && item.json.choices[0].message && item.json.choices[0].message.content;\n    if (item.json && item.json.error) throw new Error('API ' + (item.json.error.message || item.json.error));\n    if (typeof c !== 'string' || !c.trim()) throw new Error('empty response');\n    p = JSON.parse(c.replace(/```(?:json)?/gi, '').trim());\n  } catch (e) { return rejectedRow('EXTRACTION_FAILED: ' + e.message); }\n\n  if (p.is_job_seeker !== true) return rejectedRow('NOT_A_JOB_SEEKER');\n  const age = typeof base.post_age_days === 'number' ? base.post_age_days : null;\n  if (age !== null && age > 365) return rejectedRow('STALE_POST(' + age + 'd)');\n\n  // 2. every claim must appear in the post text\n  const skills = [...new Set((Array.isArray(p.skills) ? p.skills : []).map(s => String(s).trim()).filter(Boolean))].filter(s => hasWord(text, s)).slice(0, 8);\n  const links = [...new Set((Array.isArray(p.portfolio_links) ? p.portfolio_links : []).map(s => String(s).trim().replace(/[.,;:!?)\\]]+$/, '')))].filter(u => (base.urls_in_text || []).includes(u));\n  const quote = typeof p.evidence_quote === 'string' && p.evidence_quote.trim().length >= 15 && p.evidence_quote.length <= 300 && text.includes(norm(p.evidence_quote)) ? p.evidence_quote.trim() : null;\n  const location = typeof p.location === 'string' && p.location.trim() && text.includes(norm(p.location)) ? p.location.trim() : null;\n  const role = typeof p.seeking_role === 'string' && p.seeking_role.trim() && text.includes(norm(p.seeking_role)) ? p.seeking_role.trim() : null;\n\n  // 3. experience level is decided by code, not by the model\n  const level = base.candidate_level_hint && base.candidate_level_hint !== 'UNCLEAR' ? base.candidate_level_hint\n    : (JUNIOR.test(base.post_text || '') ? 'STUDENT_OR_JUNIOR' : (SENIOR.test(base.post_text || '') ? 'EXPERIENCED' : 'UNKNOWN'));\n\n  // 4. score (Track B weights: role 30, skills 25, portfolio 20, level 15, evidence 10)\n    const s_role = AI_VOCAB.test(base.title || '') ? 100 : (AI_VOCAB.test(role || '') || AI_VOCAB.test(base.post_text || '') ? 60 : 0);\n  const s_skill = skills.length >= 3 ? 100 : skills.length === 2 ? 70 : skills.length === 1 ? 40 : 0;\n  const s_port = links.some(u => /github\\.com|gitlab\\.com|portfolio|\\.dev\\b|\\.io\\b|linkedin\\.com\\/in\\//i.test(u)) ? 100 : (links.length ? 60 : 0);\n  const s_level = level === 'STUDENT_OR_JUNIOR' ? 100 : level === 'UNKNOWN' ? 50 : 20;\n  const s_evid = quote ? 100 : 0;\n  let score = Math.round(0.30 * s_role + 0.25 * s_skill + 0.20 * s_port + 0.15 * s_level + 0.10 * s_evid);\n\n  // veto: no verified skill and no verified quote means nothing supports the claim\n  const veto = !quote && skills.length === 0;\n  if (veto) score = 0;\n  let route = veto ? 'REJECTED' : (score >= MIN_SCORE ? 'TALENT_QUALIFIED' : (score >= 60 ? 'REVIEW' : 'REJECTED'));\n  let reasons = veto ? 'NO_VERIFIED_EVIDENCE' : `role=${s_role} skills=${s_skill} portfolio=${s_port} level=${s_level} evidence=${s_evid}`;\n  // a snippet cannot show skills or links, so it cannot reach 60 on its own: a verified quote plus AI role fit earns a human review from 50\n  if (route === 'REJECTED' && !veto && base.text_source !== 'reddit_post_json' && score >= 50 && quote && s_role > 0) { route = 'REVIEW'; reasons += ' SNIPPET_REVIEW(floor 50)'; }\n  // a search snippet can mix text from other threads, and an old post may be stale: neither may be auto-qualified\n  if (route === 'TALENT_QUALIFIED' && base.text_source !== 'reddit_post_json') { route = 'REVIEW'; reasons += ' CAPPED:SNIPPET_ONLY'; }\n  if (route === 'TALENT_QUALIFIED' && age !== null && age > 180) { route = 'REVIEW'; reasons += ' CAPPED:STALE(' + age + 'd)'; }\n\n  return { json: {\n    talent_id: 'TLN-' + hash(base.post_id), post_id: base.post_id, post_url: base.source_url, author_handle: base.author_handle || '',\n    subreddit: base.subreddit || '', title: base.title || '', seeking_role: role || '', skills: skills.join(', '), portfolio_links: links.join(', '),\n    experience_level: level, location: location || '', evidence: quote || '', lead_score: score, route, reasons,\n    campaign_id: base.campaign_id, post_fetch_status: base.post_fetch_status, discovered_at: now, text_source: base.text_source || '', posted_at: base.posted_at || '',\n    result_id: base.result_id, rejection_id: 'REJ-' + hash(base.post_id), normalized_domain: 'reddit.com/r/' + (base.subreddit || ''), reason_text: reasons, now\n  } };\n});"
+        "jsCode": "// Verify & Score Talent: deterministic checks on the model output, then score and route (Track B)\nconst cfg = $('Parameter Normalizer').first().json;\nconst ctx = $('Merge Talent Inputs').all();\nconst MIN_SCORE = cfg.min_lead_score || 80;\n\nconst hash = s => { let h = 5381; for (const c of String(s)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36).toUpperCase(); };\nconst norm = s => String(s || '').replace(/[‐-―−]/g, '-').replace(/[‘’]/g, \"'\").replace(/[“”]/g, '\"').replace(/\\s+/g, ' ').trim().toLowerCase();\nconst esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\nconst hasWord = (text, w) => w.length >= 2 && new RegExp('(^|[^a-z0-9])' + esc(norm(w)) + '($|[^a-z0-9])', 'i').test(text);\nconst AI_VOCAB = /\\b(ai|a\\.i\\.|ml|machine learning|deep learning|nlp|llms?|genai|generative ai|automation|automate|n8n|zapier|langchain|openai|pytorch|tensorflow|scikit-learn|computer vision|data science|prompt engineering|agents?|python|pandas|numpy|hugging ?face|rag|vector database|make\\.com)\\b/i;\nconst JUNIOR = /\\b(student|intern|internship|fresher|entry[- ]level|junior|beginner|learning|my portfolio)\\b/i;\nconst SENIOR = /for hire|\\$\\s?\\d+[^\\s]*\\s?\\/\\s?hr|\\b\\d+\\+?\\s*years\\b|\\bsenior\\b|\\bspecialist\\b/i;\nconst now = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 19).replace('T', ' ') + ' IST';\n\nreturn $input.all().map((item, i) => {\n  const base = ctx[i] ? ctx[i].json : {};\n  const text = norm(base.post_text);\n  const label = base.source_platform === 'reddit' ? 'reddit.com/r/' + (base.subreddit || '') : (base.normalized_domain || '');\n  const rejectedRow = (reason) => ({ json: {\n    talent_id: 'TLN-' + hash(base.post_id), post_id: base.post_id, post_url: base.source_url, author_handle: base.author_handle || '',\n    subreddit: base.subreddit || '', title: base.title || '', seeking_role: '', skills: '', portfolio_links: '', experience_level: '', location: '', evidence: '',\n    lead_score: 0, route: 'REJECTED', reasons: reason, campaign_id: base.campaign_id, post_fetch_status: base.post_fetch_status, discovered_at: now, text_source: base.text_source || '', posted_at: base.posted_at || '', source_platform: base.source_platform || '', candidate_name: '',\n    result_id: base.result_id, rejection_id: 'REJ-' + hash(base.post_id), normalized_domain: label, reason_text: reason, now\n  } });\n\n  // 1. model output must parse\n  let p;\n  try {\n    const c = item.json && item.json.choices && item.json.choices[0] && item.json.choices[0].message && item.json.choices[0].message.content;\n    if (item.json && item.json.error) throw new Error('API ' + (item.json.error.message || item.json.error));\n    if (typeof c !== 'string' || !c.trim()) throw new Error('empty response');\n    p = JSON.parse(c.replace(/```(?:json)?/gi, '').trim());\n  } catch (e) { return rejectedRow('EXTRACTION_FAILED: ' + e.message); }\n\n  if (p.is_job_seeker !== true) return rejectedRow('NOT_A_JOB_SEEKER');\n  const age = typeof base.post_age_days === 'number' ? base.post_age_days : null;\n  if (age !== null && age > 365) return rejectedRow('STALE_POST(' + age + 'd)');\n\n  // 2. every claim must appear in the post text\n  const skills = [...new Set((Array.isArray(p.skills) ? p.skills : []).map(s => String(s).trim()).filter(Boolean))].filter(s => hasWord(text, s)).slice(0, 8);\n  const links = [...new Set((Array.isArray(p.portfolio_links) ? p.portfolio_links : []).map(s => String(s).trim().replace(/[.,;:!?)\\]]+$/, '')))].filter(u => (base.urls_in_text || []).includes(u));\n  const quote = typeof p.evidence_quote === 'string' && p.evidence_quote.trim().length >= 15 && p.evidence_quote.length <= 300 && text.includes(norm(p.evidence_quote)) ? p.evidence_quote.trim() : null;\n  const location = typeof p.location === 'string' && p.location.trim() && text.includes(norm(p.location)) ? p.location.trim() : null;\n  const personName = typeof p.person_name === 'string' && p.person_name.trim().length >= 3 && text.includes(norm(p.person_name)) ? p.person_name.trim() : null;\n  const role = typeof p.seeking_role === 'string' && p.seeking_role.trim() && text.includes(norm(p.seeking_role)) ? p.seeking_role.trim() : null;\n\n  // 3. experience level is decided by code, not by the model\n  const level = base.candidate_level_hint && base.candidate_level_hint !== 'UNCLEAR' ? base.candidate_level_hint\n    : (JUNIOR.test(base.post_text || '') ? 'STUDENT_OR_JUNIOR' : (SENIOR.test(base.post_text || '') ? 'EXPERIENCED' : 'UNKNOWN'));\n\n  // 4. score (Track B weights: role 30, skills 25, portfolio 20, level 15, evidence 10)\n    const s_role = AI_VOCAB.test(base.title || '') ? 100 : (AI_VOCAB.test(role || '') || AI_VOCAB.test(base.post_text || '') ? 60 : 0);\n  const s_skill = skills.length >= 3 ? 100 : skills.length === 2 ? 70 : skills.length === 1 ? 40 : 0;\n  const s_port = links.some(u => /github\\.com|gitlab\\.com|portfolio|\\.dev\\b|\\.io\\b|linkedin\\.com\\/in\\//i.test(u)) ? 100 : (links.length ? 60 : 0);\n  const s_level = level === 'STUDENT_OR_JUNIOR' ? 100 : level === 'UNKNOWN' ? 50 : 20;\n  const s_evid = quote ? 100 : 0;\n  let score = Math.round(0.30 * s_role + 0.25 * s_skill + 0.20 * s_port + 0.15 * s_level + 0.10 * s_evid);\n\n  // veto: no verified skill and no verified quote means nothing supports the claim\n  const veto = !quote && skills.length === 0;\n  if (veto) score = 0;\n  let route = veto ? 'REJECTED' : (score >= MIN_SCORE ? 'TALENT_QUALIFIED' : (score >= 60 ? 'REVIEW' : 'REJECTED'));\n  let reasons = veto ? 'NO_VERIFIED_EVIDENCE' : `role=${s_role} skills=${s_skill} portfolio=${s_port} level=${s_level} evidence=${s_evid}`;\n  // a snippet cannot show skills or links, so it cannot reach 60 on its own: a verified quote plus AI role fit earns a human review from 50\n  if (route === 'REJECTED' && !veto && base.text_source === 'serp_title_snippet' && score >= 50 && quote && s_role > 0) { route = 'REVIEW'; reasons += ' SNIPPET_REVIEW(floor 50)'; }\n  // a search snippet can mix text from other threads, and an old post may be stale: neither may be auto-qualified\n  if (route === 'TALENT_QUALIFIED' && base.text_source === 'serp_title_snippet') { route = 'REVIEW'; reasons += ' CAPPED:SNIPPET_ONLY'; }\n  if (route === 'TALENT_QUALIFIED' && age !== null && age > 180) { route = 'REVIEW'; reasons += ' CAPPED:STALE(' + age + 'd)'; }\n\n  return { json: {\n    talent_id: 'TLN-' + hash(base.post_id), post_id: base.post_id, post_url: base.source_url, author_handle: base.author_handle || '',\n    subreddit: base.subreddit || '', title: base.title || '', seeking_role: role || '', skills: skills.join(', '), portfolio_links: links.join(', '),\n    experience_level: level, location: location || '', evidence: quote || '', lead_score: score, route, reasons,\n    campaign_id: base.campaign_id, post_fetch_status: base.post_fetch_status, discovered_at: now, text_source: base.text_source || '', posted_at: base.posted_at || '', source_platform: base.source_platform || '', candidate_name: personName || '',\n    result_id: base.result_id, rejection_id: 'REJ-' + hash(base.post_id), normalized_domain: label, reason_text: reasons, now\n  } };\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1792,
+        1912,
         -400
       ],
       "id": "0975ee78-5149-42a3-bbd2-4cb4af98e8fa",
@@ -1603,7 +1603,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2032,
+        2152,
         -400
       ],
       "id": "ae2b1f94-e1a0-4524-a699-d4ef9df0bec1",
@@ -1646,7 +1646,9 @@
             "post_fetch_status": "={{ $json.post_fetch_status }}",
             "discovered_at": "={{ $json.discovered_at }}",
             "text_source": "={{ $json.text_source }}",
-            "posted_at": "={{ $json.posted_at }}"
+            "posted_at": "={{ $json.posted_at }}",
+            "source_platform": "={{ $json.source_platform }}",
+            "candidate_name": "={{ $json.candidate_name }}"
           },
           "matchingColumns": [
             "post_id"
@@ -1831,6 +1833,24 @@
               "display": true,
               "type": "string",
               "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_platform",
+              "displayName": "source_platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "candidate_name",
+              "displayName": "candidate_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             }
           ],
           "attemptToConvertTypes": false,
@@ -1841,7 +1861,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        2272,
+        2392,
         -500
       ],
       "id": "346518de-9167-485c-a877-4e9d69cc23b1",
@@ -1958,7 +1978,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        2272,
+        2392,
         -300
       ],
       "id": "746275a8-28bd-4309-b454-c238941a3d40",
@@ -1969,6 +1989,87 @@
           "name": "Google Sheets account 5"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Web Talent Hits: personal pages (portfolio, GitHub profile, blog post) from the general web results\nconst BLOCK = ['linkedin.com','facebook.com','instagram.com','twitter.com','x.com','youtube.com','glassdoor.com','glassdoor.co.in','indeed.com','naukri.com','instahyre.com','internshala.com','wellfound.com','ziprecruiter.com','foundit.in','shine.com','apna.co','letsintern.com','unstop.com','freshersworld.com','simplyhired.com','monster.com','jooble.org','bebee.com','ambitionbox.com','quora.com','wikipedia.org','coursera.org','udemy.com','geeksforgeeks.org','w3schools.com','stackoverflow.com','stackexchange.com','reddit.com','google.com','tiktok.com','pinterest.com','amazon.com','github.blog','medium.com'];\nconst JOB_TITLE = /\\b(jobs?|careers?|hiring|vacanc(?:y|ies)|openings?|salary|salaries|top\\s+\\d+|best\\s+\\d+|list of)\\b/i;\nconst JUNIOR = /\\b(student|intern|internship|fresher|entry[- ]level|junior|beginner|learning|my portfolio)\\b/i;\nconst SENIOR = /for hire|\\$\\s?\\d+[^\\s]*\\s?\\/\\s?hr|\\b\\d+\\+?\\s*years\\b|\\bsenior\\b|\\bspecialist\\b/i;\nconst cfg = $('Split Queries').first().json;\nconst hash = s => { let h = 5381; for (const c of s) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };\nconst seen = new Set(), out = [];\nlet skipped = 0;\n\nouter: for (const item of $input.all()) {\n  if (item.json.error || !Array.isArray(item.json.organic_results)) continue;\n  const query = item.json.search_parameters?.q || '';\n  for (const r of item.json.organic_results) {\n    const link = String(r.link || '');\n    const m = link.match(/^(https?):\\/\\/([^\\/?#:]+)(\\/[^?#]*)?/i);\n    if (!m) { skipped++; continue; }\n    const host = m[2].toLowerCase().replace(/^www\\./, '');\n    const path = (m[3] || '/').replace(/\\/+$/, '') || '/';\n    if (BLOCK.some(b => host === b || host.endsWith('.' + b))) { skipped++; continue; }\n    if (/\\.(edu|gov|mil)$|\\.(ac|edu|gov)\\.[a-z]{2}$/.test(host)) { skipped++; continue; }\n    if (host === 'github.com' && path.split('/').filter(Boolean).length !== 1) { skipped++; continue; } // a repo or list, not a person\n    if (JOB_TITLE.test(r.title || '')) { skipped++; continue; }\n    const key = host + path;\n    if (seen.has(key)) { skipped++; continue; }\n    seen.add(key);\n    const text = (r.title || '') + ' ' + (r.snippet || '');\n    out.push({ json: {\n      result_id: 'RES-' + hash(key),\n      campaign_id: cfg.campaign_id,\n      source_url: link,\n      normalized_domain: host,\n      source_platform: 'web',\n      title: r.title || null,\n      snippet: r.snippet || null,\n      candidate_level_hint: JUNIOR.test(text) ? 'STUDENT_OR_JUNIOR' : (SENIOR.test(text) ? 'EXPERIENCED' : 'UNCLEAR'),\n      query,\n      discovery_time: new Date(Date.now() + 330 * 60000).toISOString().slice(0, 19).replace('T', ' ') + ' IST',\n      scrape_status: 'PENDING'\n    } });\n    if (out.length >= cfg.max_leads_limit) break outer;\n  }\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        20
+      ],
+      "id": "35b81fed-0093-40c7-8716-7597a41ccb64",
+      "name": "Extract Web Talent Hits"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.source_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000,
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        864,
+        20
+      ],
+      "id": "10e631c1-2f43-4a3d-a719-d80b36e9df02",
+      "name": "Scrape Talent Page",
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Web Talent Context: turn the fetched personal page into clean text, with the page's real links listed\nconst MAX_CHARS = 2500; // NFR-04\nconst NAMED = { nbsp:' ', amp:'&', lt:'<', gt:'>', quot:'\"', apos:\"'\", ndash:'-', mdash:'-', hellip:'...', rsquo:\"'\", lsquo:\"'\", ldquo:'\"', rdquo:'\"' };\nconst decode = s => s\n  .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16)))\n  .replace(/&#(\\d+);/g, (m, d) => String.fromCharCode(parseInt(d, 10)))\n  .replace(/&([a-z]+);/gi, (m, n) => (NAMED[n.toLowerCase()] !== undefined ? NAMED[n.toLowerCase()] : m))\n  .replace(/ /g, ' ');\nconst hash = s => { let h = 5381; for (const c of String(s)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };\nconst SIGNAL = /(open to work|looking for|seeking|available for|intern|fresher|student|skills?|tech stack|technologies|projects?|github|portfolio|n8n|python|machine learning|automation|\\bai\\b|llm|data science)/i;\nconst LINK_OK = /^https?:\\/\\/(?:www\\.)?(?:github\\.com\\/[A-Za-z0-9-]+\\/?$|github\\.com\\/[A-Za-z0-9-]+\\/[A-Za-z0-9._-]+\\/?$|[a-z0-9-]+\\.github\\.io|gitlab\\.com\\/|linkedin\\.com\\/in\\/|kaggle\\.com\\/|huggingface\\.co\\/|[a-z0-9-]+\\.(?:dev|me|vercel\\.app|netlify\\.app))/i;\nconst hits = $('Extract Web Talent Hits').all();\nconst out = [];\n\n$input.all().forEach((item, i) => {\n  const hit = hits[i] ? hits[i].json : {};\n  const status = item.json.statusCode || item.json.status || null;\n  const body = typeof item.json.body === 'string' ? item.json.body : (typeof item.json.data === 'string' ? item.json.data : '');\n  if (item.json.error || !body || (status && status >= 400)) return; // nothing to evaluate\n\n  const links = [];\n  for (const am of body.matchAll(/<a\\b[^>]*?\\bhref\\s*=\\s*[\"'](https?:\\/\\/[^\"'#\\s]+)[\"']/gi)) {\n    const h = am[1].replace(/[.,;:!?)\\]]+$/, '');\n    if (LINK_OK.test(h) && !links.includes(h)) links.push(h);\n  }\n  const pageUrl = String(hit.source_url || '').replace(/[.,;:!?)\\]]+$/, '');\n  const allLinks = [pageUrl, ...links.filter(l => l !== pageUrl)].filter(Boolean).slice(0, 15);\n\n  let t = body\n    .replace(/<(script|style|noscript|svg|iframe)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<!--[\\s\\S]*?-->/g, ' ')\n    .replace(/<(br|\\/p|\\/div|\\/li|\\/h[1-6]|\\/tr)\\s*\\/?>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ');\n  t = decode(t).replace(/[ \\t\\r\\f\\v]+/g, ' ').replace(/\\s*\\n\\s*/g, '\\n').replace(/\\n{2,}/g, '\\n').trim();\n  if (t.length < 200) return; // client-side rendered or empty page\n\n  const lines = [...new Set(t.split('\\n').map(s => s.trim()).filter(s => s.length >= 3 && s.length <= 400))];\n  const head = []; let n = 0;\n  for (const l of lines) { if (n + l.length > 900) break; head.push(l); n += l.length + 1; }\n  const sig = []; let m = 0;\n  for (const l of lines) { if (head.includes(l) || !SIGNAL.test(l)) continue; if (m + l.length > 1300) break; sig.push(l); m += l.length + 1; }\n  const text = (head.join('\\n') + '\\n' + sig.join('\\n')).trim().slice(0, MAX_CHARS);\n\n  out.push({ json: {\n    ...hit,\n    post_id: 'WEB-' + hash(hit.source_url),\n    post_fetch_status: 'FETCHED',\n    text_source: 'web_page',\n    author_handle: null,\n    posted_at: null,\n    post_age_days: null,\n    post_text: text,\n    urls_in_text: allLinks,\n    llm_context: `SOURCE: personal web page (${hit.normalized_domain})\\nPAGE TITLE: ${hit.title || ''}\\nPAGE TEXT:\\n${text}\\nLINKS ON PAGE:\\n${allLinks.join('\\n')}`\n  } });\n});\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        20
+      ],
+      "id": "6165c12d-5637-48a7-9625-0a23ba551087",
+      "name": "Build Web Talent Context"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1552,
+        -200
+      ],
+      "id": "7112c8f2-64db-45aa-a7a7-62318f483403",
+      "name": "Merge Talent Inputs"
     }
   ],
   "pinData": {},
@@ -2062,6 +2163,11 @@
         [
           {
             "node": "Extract Reddit Hits",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Web Talent Hits",
             "type": "main",
             "index": 0
           }
@@ -2418,7 +2524,7 @@
       "main": [
         [
           {
-            "node": "Groq Talent Extract",
+            "node": "Merge Talent Inputs",
             "type": "main",
             "index": 0
           }
@@ -2459,6 +2565,50 @@
         [
           {
             "node": "Write Talent Quarantine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Web Talent Hits": {
+      "main": [
+        [
+          {
+            "node": "Scrape Talent Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Talent Page": {
+      "main": [
+        [
+          {
+            "node": "Build Web Talent Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Web Talent Context": {
+      "main": [
+        [
+          {
+            "node": "Merge Talent Inputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Talent Inputs": {
+      "main": [
+        [
+          {
+            "node": "Groq Talent Extract",
             "type": "main",
             "index": 0
           }

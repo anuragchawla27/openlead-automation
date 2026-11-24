@@ -1,9 +1,18 @@
-# Day 18: Track B, talent sourcing (Reddit)
+# Day 18: Track B, talent sourcing (Reddit + open web)
 
 ## Flow
 `Is B2B?` (false) -> `Extract Reddit Hits` -> `Reddit Text From SERP` -> `Scrape Reddit Post` -> `Build Talent Context` -> `Groq Talent Extract` -> `Verify & Score Talent` -> `Talent Not Rejected?` -> `Write Talent` (Talent_Leads tab) or `Write Talent Quarantine` (Stage_B_Quarantine tab).
 
 Run it from the same intake form or schedule. A prompt such as "Find students looking for AI automation internships on Reddit" is parsed as `TALENT_RECRUITMENT`.
+
+## Open-web path (portfolio, GitHub and blog pages)
+Reddit snippets cannot show skills or links, so the talent track also searches the open web (queries 4 and 5: `site:github.io ...` and a portfolio query that excludes job boards).
+`Is B2B?` (false) -> `Extract Web Talent Hits` -> `Scrape Talent Page` -> `Build Web Talent Context` -> `Merge Talent Inputs` (joins the Reddit items) -> the same Groq extraction, verification and routing.
+- `Extract Web Talent Hits` drops job boards, social sites, Reddit, GitHub repositories (only a GitHub profile is kept), job-list titles and duplicates.
+- `Scrape Talent Page` fetches the page (10 s timeout, 3 per second, continue on fail). Failed, empty and client-rendered pages are dropped.
+- `Build Web Talent Context` turns the HTML into clean text (max 2,500 characters) and lists the page's real profile links (GitHub, GitLab, LinkedIn profile, Kaggle, Hugging Face, personal domains) so the model can only choose a link that exists.
+- A fetched web page is real text, so it is **not** capped like a snippet and can reach `TALENT_QUALIFIED`. The model also returns `person_name`, which is kept only if it appears in the page text.
+- Web leads have `source_platform = web`, and the post URL is the page itself. Freshness is unknown for web pages.
 
 ## What each step does
 - **Scrape Reddit Post**: GET `reddit.com/r/<sub>/comments/<id>.json` with a descriptive User-Agent, at most 1 request per 2 s, 10 s timeout. If Reddit blocks or rate-limits the request, the lead falls back to the search title+snippet and the author stays blank (`post_fetch_status` shows why).
@@ -26,7 +35,7 @@ Snippet-only leads cannot show skills or links, so they cannot reach 60 on their
 ## Sheet: Talent_Leads
 Create a tab named `Talent_Leads` with this header row (tab-separated, paste into A1):
 
-talent_id, post_id, post_url, author_handle, subreddit, title, seeking_role, skills, portfolio_links, experience_level, location, evidence, lead_score, route, reasons, campaign_id, post_fetch_status, discovered_at, text_source, posted_at
+talent_id, post_id, post_url, author_handle, subreddit, title, seeking_role, skills, portfolio_links, experience_level, location, evidence, lead_score, route, reasons, campaign_id, post_fetch_status, discovered_at, text_source, posted_at, source_platform, candidate_name
 
 Rows upsert on `post_id`, so re-running a campaign never creates duplicates (NFR-08).
 
@@ -42,6 +51,7 @@ Reddit answers the post fetch with `HTTP 403 Blocked` (an HTML block page), also
 Only voluntarily published post content is used: public username, post URL, skills and portfolio links the author wrote. No email or phone fields exist in the talent path.
 
 ## Known gaps
+- A personal page is judged only on the text and links on that page. Pages that need JavaScript to show content are skipped.
 - Personalised talent invitations are not generated. The handbook output line mentions them, but Reddit contact is by direct message and is done by a person.
 - Reddit may block or rate-limit unauthenticated requests. The fallback keeps the pipeline running but leaves the author blank.
 - A rejected extraction caused by a temporary API error is written to quarantine. A later successful run adds the lead to `Talent_Leads`, and the old quarantine row stays.
