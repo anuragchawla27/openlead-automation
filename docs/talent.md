@@ -6,7 +6,7 @@
 Run it from the same intake form or schedule. A prompt such as "Find students looking for AI automation internships on Reddit" is parsed as `TALENT_RECRUITMENT`.
 
 ## Open-web path (portfolio, GitHub and blog pages)
-Reddit snippets cannot show skills or links, so the talent track also searches the open web (queries 4 and 5: `site:github.io ...` and a portfolio query that excludes job boards).
+Reddit snippets cannot show skills or links, so the talent track also searches the open web (queries 4 to 8: three `site:github.io` queries, `site:netlify.app` and `site:vercel.app`).
 `Is B2B?` (false) -> `Extract Web Talent Hits` -> `Scrape Talent Page` -> `Build Web Talent Context` -> `Merge Talent Inputs` (joins the Reddit items) -> the same Groq extraction, verification and routing.
 - `Extract Web Talent Hits` drops job boards, social sites, Reddit, GitHub repositories (only a GitHub profile is kept), job-list titles and duplicates.
 - `Scrape Talent Page` fetches the page (10 s timeout, 3 per second, continue on fail). Failed, empty and client-rendered pages are dropped.
@@ -55,3 +55,7 @@ Only voluntarily published post content is used: public username, post URL, skil
 - Personalised talent invitations are not generated. The handbook output line mentions them, but Reddit contact is by direct message and is done by a person.
 - Reddit may block or rate-limit unauthenticated requests. The fallback keeps the pipeline running but leaves the author blank.
 - A rejected extraction caused by a temporary API error is written to quarantine. A later successful run adds the lead to `Talent_Leads`, and the old quarantine row stays.
+
+- **Shared quote rule:** if the same evidence quote appears on 2 or more different snippet-only posts in one run, all of them are rejected as `SHARED_QUOTE`, because a Google snippet can be stitched from another thread and the quote cannot be tied to any one post.
+- **Web hits filter:** hits from the Reddit-scoped queries are ignored by the web path (when Google drops `site:` they return news and job boards). Only personal hosts (github.io, netlify.app, vercel.app, pages.dev and similar, or a GitHub profile) or pages that call themselves a portfolio, resume or CV are kept. The hit limit is shared one-per-query in turn, so no query uses it all up.
+- **Seeking-intent rule:** a snippet-only lead is kept only if its own quote says the person is seeking work (internship, job, role, open to work, seeking, fresher, entry-level). A post asking for project ideas is rejected as `NO_SEEKING_INTENT`.

@@ -30,7 +30,7 @@ const groq = o => ({ choices: [{ message: { content: typeof o === 'string' ? o :
   const h = mk({ ...base, max_leads_limit: 0, min_lead_score: 150 });
   T('PN: low/high bounds clamped (0->1, 150->100)', h.max_leads_limit === 1 && h.min_lead_score === 100);
   const i = mk({ ...base, task_category: 'TALENT_RECRUITMENT', target_roles: ['student', 'freshers'], exclusion_keywords: [] });
-  T('PN: Track B persona roles replaced by defaults', i.target_roles.includes('AI Automation Intern') && i.compiled_queries.length === 5);
+  T('PN: Track B persona roles replaced by defaults', i.target_roles.includes('AI Automation Intern') && i.compiled_queries.length === 8);
 }
 
 // ============ Extract Hits (SERP fixture) ============
