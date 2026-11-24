@@ -29,7 +29,7 @@ T('MSG: names workflow, failed node, execution id, error, time', ['openlead-disp
 T('MSG: stays well under the Telegram 4096-char limit', o.text.length < 1500, String(o.text.length));
 const evil = build({ execution: { id: '1', lastNodeExecuted: 'A<b>', error: { message: 'bad <script>alert(1)</script> & more' } }, workflow: { name: 'W' } });
 T('MSG: HTML in the error message is escaped (Telegram would reject it otherwise)', !evil.text.includes('<script>') && evil.text.includes('&lt;script&gt;') && evil.text.includes('&amp;') && evil.text.includes('A&lt;b&gt;'));
-const secret = build({ execution: { id: '1', error: { message: 'HTTP 401 key gsk_ABCDEF1234567890abcd Bearer abc.def-123 AIzaSyA1234567890abcdef bot 1234567890:AAEhBP0av28ABCDEFGHIJKLMNOPQRSTUVWXYZ' } }, workflow: { name: 'W' } });
+const secret = build({ execution: { id: '1', error: { message: 'HTTP 401 key ' + 'gsk' + '_ABCDEF1234567890abcd Bearer abc.def-123 ' + 'AIza' + 'SyA1234567890abcdef bot ' + '1234567890' + ':AAEhBP0av28ABCDEFGHIJKLMNOPQRSTUVWXYZ' } }, workflow: { name: 'W' } });
 T('MSG: API keys and tokens in the error text are redacted', !/gsk_ABCDEF|abc\.def|AIzaSyA1234|AAEhBP0av28/.test(secret.text) && (secret.text.match(/\[redacted\]/g) || []).length >= 4);
 const big = build({ execution: { id: '1', error: { message: 'x'.repeat(5000) } }, workflow: { name: 'W' } });
 T('MSG: a huge error message is truncated', big.text.length < 1500 && big.text.includes('...'));

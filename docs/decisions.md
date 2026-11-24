@@ -169,3 +169,16 @@ Known gaps:
 - Fewer than 20 talent leads from Reddit snippets alone. Planned: open-web portfolio search, where pages can be fetched.
 - Personalised talent invitations are not generated.
 - A temporary API failure writes a quarantine row that a later success does not remove.
+
+## Day 19: Track B open-web portfolio path
+
+- Reddit snippets cannot show skills or links, so the talent track now also searches the open web: `site:github.io` portfolios and a general portfolio query that excludes job boards. The pages are fetched, cleaned to text, and listed with their real profile links before extraction.
+- A fetched page is real text, so it is not capped like a snippet and can reach `TALENT_QUALIFIED`. The same verification applies: every skill, link, name and quote must appear in the page text. Experience level is set by code.
+- The model returns `person_name`, kept only if it appears in the page. `Talent_Leads` gained `source_platform` and `candidate_name`.
+- Verified live: 22 items through the merge, 5 web leads qualified, 10 rejected (a freelancer page, a page with no job-seeking statement, an old internship write-up), no unverifiable claim passed.
+
+Known gaps:
+- One Google snippet was stitched into 4 different Reddit threads (same quote, different titles). They sit in REVIEW and need a person to check them. Planned: reject a quote shared by 2 or more posts.
+- Web scores all reach 100, so the score does not separate strong from weak leads.
+- A page linking a different GitHub handle than its own URL needs a human check.
+- Fewer than 20 talent leads so far. Planned: wider web queries and a higher hit limit.
