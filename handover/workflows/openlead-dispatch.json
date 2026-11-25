@@ -1,0 +1,469 @@
+{
+  "name": "openlead-dispatch",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        208
+      ],
+      "id": "0cfeb2ec-f394-4b7e-b7a9-8a3dd13e4487",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Stage_C_Master_Approved",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -960,
+        208
+      ],
+      "id": "e71fab65-69d4-4d54-97d9-e90c68853f0b",
+      "name": "Read Master",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Suppression_List",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -720,
+        208
+      ],
+      "id": "e4ae221a-2326-40ef-8594-02568f76da02",
+      "name": "Read Suppression",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Select Approved To Send (Day 15 gate: FR-15 suppression, FR-16 approval).\n// Input: Suppression_List rows (one empty item if the tab is empty). Master rows come from 'Read Master'.\nconst TEST_MODE = true;                         // true = EVERY email goes to TEST_INBOX only. Set false only for a real send.\nconst TEST_INBOX = 'REPLACE_WITH_YOUR_TEST_EMAIL';   // an inbox you own; set it in n8n, do not commit it\nconst MAX_PER_RUN = 5;\nconst MIN_SCORE = 80;\nconst EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;\nconst clean = v => String(v == null ? '' : v).trim();\n\nif (TEST_MODE && !EMAIL_RE.test(TEST_INBOX)) throw new Error('SET_TEST_INBOX: put an email address you own in TEST_INBOX at the top of this node.');\n\nconst supEmails = new Set(), supDomains = new Set();\nfor (const it of $input.all()) {\n  const s = it.json || {};\n  const e = clean(s.email).toLowerCase(), d = clean(s.domain).toLowerCase().replace(/^www\\./, '');\n  if (e) supEmails.add(e);\n  if (d) supDomains.add(d);\n}\n\nconst out = [], skipped = [];\nlet toSend = 0, toSuppress = 0;\nfor (const it of $('Read Master').all()) {\n  const r = it.json || {};\n  const id = clean(r.master_lead_id);\n  if (!id) continue;\n  const approval = clean(r.human_approval).toUpperCase();\n  if (approval !== 'APPROVED') { skipped.push({ id, reason: 'NOT_APPROVED(' + (approval || 'BLANK') + ')' }); continue; }\n  const status = clean(r.outreach_status).toUpperCase();\n  if (status === 'SENT' || clean(r.sent_at)) { skipped.push({ id, reason: 'ALREADY_SENT' }); continue; }\n  if (status !== 'DRAFTED') { skipped.push({ id, reason: 'NOT_DRAFTED(' + (status || 'BLANK') + ')' }); continue; }\n  const email = clean(r.verified_email), subject = clean(r.outreach_subject), draft = clean(r.outreach_draft);\n  if (!EMAIL_RE.test(email)) { skipped.push({ id, reason: 'INVALID_EMAIL' }); continue; }\n  if (!subject || !draft) { skipped.push({ id, reason: 'NO_DRAFT' }); continue; }\n  if (!/UNSUBSCRIBE/.test(draft)) { skipped.push({ id, reason: 'DRAFT_MISSING_UNSUBSCRIBE_FOOTER' }); continue; }\n  if (!(Number(clean(r.lead_score)) >= MIN_SCORE)) { skipped.push({ id, reason: 'SCORE_BELOW_80' }); continue; }\n  const domain = (email.split('@')[1] || '').toLowerCase();\n  const nd = clean(r.normalized_domain).toLowerCase();\n  if (supEmails.has(email.toLowerCase()) || supDomains.has(domain) || (nd && supDomains.has(nd))) {\n    out.push({ json: { action: 'SUPPRESS', master_lead_id: id, verified_email: email, reason: 'EMAIL_OR_DOMAIN_ON_SUPPRESSION_LIST' } });\n    toSuppress++; continue;\n  }\n  if (toSend >= MAX_PER_RUN) { skipped.push({ id, reason: 'RUN_CAP_' + MAX_PER_RUN }); continue; }\n  out.push({ json: { action: 'SEND', master_lead_id: id, company_name: clean(r.company_name), verified_email: email,\n    outreach_subject: subject, outreach_draft: draft, human_approval: approval, current_status: status,\n    test_mode: TEST_MODE, test_inbox: TEST_INBOX } });\n  toSend++;\n}\nout.push({ json: { action: 'REPORT', test_mode: TEST_MODE, to_send: toSend, to_suppress: toSuppress, skipped_count: skipped.length, skipped } });\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        208
+      ],
+      "id": "8a08e84a-5a2a-42fd-a492-250aac00edde",
+      "name": "Select Approved To Send"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1d13a678-a4e7-45cf-ac48-a535be1772ed",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "SEND",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c314f9f2-6e76-42c7-85b8-ca0b6741ec1c",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "SUPPRESS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2003c211-c769-4b61-bdeb-0e0dee4bc679",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "REPORT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        208
+      ],
+      "id": "b0a1c5de-ffc2-4799-a9c1-b7bbde24c950",
+      "name": "Gate Router"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Message: final safety assertions, then the plain-text message the Gmail node sends.\n// In TEST_MODE the recipient is always the test inbox, never the lead.\nconst hdr = s => String(s == null ? '' : s).replace(/[\\r\\n]+/g, ' ').trim();   // no header injection\nreturn $input.all().map(it => {\n  const l = it.json;\n  if (String(l.human_approval || '').trim().toUpperCase() !== 'APPROVED') throw new Error('DISPATCH_HALTED: Lead ' + l.master_lead_id + ' lacks explicit human approval.');\n  if (!/UNSUBSCRIBE/.test(String(l.outreach_draft || ''))) throw new Error('DISPATCH_HALTED: Lead ' + l.master_lead_id + ' draft has no UNSUBSCRIBE footer.');\n  const test = l.test_mode === true;\n  const to = test ? hdr(l.test_inbox) : hdr(l.verified_email);\n  const subject = (test ? '[TEST] ' : '') + hdr(l.outreach_subject);\n  const message = (test ? '[TEST MODE] This would have been sent to: ' + hdr(l.verified_email) + '\\n\\n' : '') + String(l.outreach_draft).replace(/\\r\\n/g, '\\n');\n  return { json: { master_lead_id: l.master_lead_id, to, original_to: hdr(l.verified_email), subject, message, test_mode: test, current_status: l.current_status } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "db5f69a0-fef1-43ca-b84e-06c159170fcd",
+      "name": "Build Message"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.message }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        0
+      ],
+      "id": "f2fe8865-7b57-400d-9853-89bcc8a90d21",
+      "name": "Gmail Send",
+      "webhookId": "5d2fa763-b6cd-4ec7-bbc0-439227d780c4",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Record Result: pair each Gmail response with its lead by position and shape the sheet update.\nconst istNow = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ') + ' IST';\nconst sent = $('Build Message').all().map(x => x.json);\nconst res = $input.all().map(x => x.json);\nreturn sent.map((l, i) => {\n  const r = res[i] || {};\n  const ok = !r.error && !!r.id;\n  const now = istNow();\n  const err = String((r.error && (r.error.message || r.error)) || 'NO_RESPONSE_FROM_GMAIL').slice(0, 150);\n  let status, sentAt = '', msgId = '', notes;\n  if (l.test_mode) {\n    status = l.current_status || 'DRAFTED';     // a test send never marks the lead as SENT\n    if (ok) { msgId = r.id; notes = 'TEST_SENT to ' + l.to + ' (would go to ' + l.original_to + ') at ' + now; }\n    else notes = 'TEST_SEND_FAILED: ' + err;\n  } else if (ok) { status = 'SENT'; sentAt = now; msgId = r.id; notes = 'SENT to ' + l.to; }\n  else { status = 'FAILED'; notes = 'SEND_FAILED: ' + err; }\n  return { json: { master_lead_id: l.master_lead_id, outreach_status: status, sent_at: sentAt, gmail_message_id: msgId, send_notes: notes } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "998c5815-6831-46d6-aadc-8457740aec34",
+      "name": "Record Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mark Suppressed: the lead is on the suppression list. Dispatch is aborted and the row is marked.\nreturn $input.all().map(it => ({ json: {\n  master_lead_id: it.json.master_lead_id,\n  outreach_status: 'SUPPRESSED',\n  sent_at: '',\n  gmail_message_id: '',\n  send_notes: 'SUPPRESSED: ' + it.json.reason\n} }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        208
+      ],
+      "id": "89ccae73-4651-42a2-a80a-a18d84dfd814",
+      "name": "Mark Suppressed"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Stage_C_Master_Approved",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "master_lead_id": "={{ $json.master_lead_id }}",
+            "outreach_status": "={{ $json.outreach_status }}",
+            "sent_at": "={{ $json.sent_at }}",
+            "gmail_message_id": "={{ $json.gmail_message_id }}",
+            "send_notes": "={{ $json.send_notes }}"
+          },
+          "matchingColumns": [
+            "master_lead_id"
+          ],
+          "schema": [
+            {
+              "id": "master_lead_id",
+              "displayName": "master_lead_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_status",
+              "displayName": "outreach_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sent_at",
+              "displayName": "sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "gmail_message_id",
+              "displayName": "gmail_message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "send_notes",
+              "displayName": "send_notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        720,
+        112
+      ],
+      "id": "09e6ba1e-3d7e-4fa8-8818-7304f2d30919",
+      "name": "Write Result",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "1a72c3b2-b83f-48a3-bf0c-78801974cd45",
+      "name": "Gate Report"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Master",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Master": {
+      "main": [
+        [
+          {
+            "node": "Read Suppression",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Suppression": {
+      "main": [
+        [
+          {
+            "node": "Select Approved To Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Approved To Send": {
+      "main": [
+        [
+          {
+            "node": "Gate Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Router": {
+      "main": [
+        [
+          {
+            "node": "Build Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Suppressed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Message": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Send": {
+      "main": [
+        [
+          {
+            "node": "Record Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Result": {
+      "main": [
+        [
+          {
+            "node": "Write Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Suppressed": {
+      "main": [
+        [
+          {
+            "node": "Write Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Asia/Kolkata"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b063699e9c1beda27d5247ff8e1b2e6ecfd46f1b6d0e92dfb7ac8ead79ec87c"
+  },
+  "tags": []
+}

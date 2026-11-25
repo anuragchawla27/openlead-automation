@@ -16,8 +16,8 @@ n8n HTTP `batching` sends N requests per interval, which acts as a token bucket.
 |---|---|
 | SerpAPI Request | 1 request / 1.5 s |
 | Scrape Page, Scrape About | 3 requests / 1 s |
-| Groq Extract | 1 request / 6 s |
-| Groq Extract (fallback) | 1 request / 8 s |
+| Groq Extract | 1 request / 25 s (Day 18b: about 2.4k tokens per call, free tier is about 8k per minute) |
+| Groq Extract (fallback) | 1 request / 25 s |
 
 Retries on SerpAPI and Groq nodes: 3 tries, 5 s wait. Every HTTP node continues on fail, so one bad lead never stops the run.
 

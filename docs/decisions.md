@@ -203,3 +203,9 @@ Known gaps:
 - Groq Extract and its fallback now wait 25 s between calls. A 40-lead run takes about 15 minutes longer.
 - A 400 json_validate_failed is now retryable, so the fallback model gets a second try.
 - Not changed: model reasoning, prompt, verifier.
+
+## Day 20: handover pack
+
+- Precision audit on all existing records (8 Master, 7 Review, 11 talent): text-only, precision not confirmed, 0 duplicates, 100% evidence citation. Lead counts are below the 20 target.
+- Clean import copies of the workflows live in handover/workflows and are rebuilt by tools/sanitize-workflows.js; a test fails if they are out of date.
+- Docs added: Docker setup, demo runbook, incident runbook, architecture diagrams, handover sign-off, README.
