@@ -8,7 +8,8 @@ for (const f of FILES) {
   const srcRaw = fs.readFileSync(path.join(root, 'workflows', f), 'utf8');
   const outRaw = fs.readFileSync(path.join(root, 'handover/workflows', f), 'utf8');
   const src = JSON.parse(srcRaw), out = JSON.parse(outRaw);
-  T(f + ': committed copy is up to date (run node tools/sanitize-workflows.js after any workflow change)', outRaw === clean(srcRaw));
+  // Git on Windows may check files out with CRLF line endings; the content is what must match
+  T(f + ': committed copy is up to date (run node tools/sanitize-workflows.js after any workflow change)', outRaw.replace(/\r\n/g, '\n') === clean(srcRaw));
   T(f + ': same nodes, same connections', out.nodes.length === src.nodes.length && JSON.stringify(out.connections) === JSON.stringify(src.connections));
   T(f + ': every code node is byte-identical to the working workflow', src.nodes.every((n, i) => (n.parameters.jsCode || '') === (out.nodes[i].parameters.jsCode || '')));
   T(f + ': credentials replaced by placeholders', out.nodes.every(n => Object.values(n.credentials || {}).every(c => c.id === 'REPLACE_CREDENTIAL_ID' && c.name === 'REPLACE_WITH_YOUR_CREDENTIAL')));
