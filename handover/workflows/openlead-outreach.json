@@ -1,0 +1,297 @@
+{
+  "name": "openlead-outreach",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b46861da-43be-4241-9431-598906010247",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Stage_C_Master_Approved",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        0
+      ],
+      "id": "31a247af-d1ee-47f0-b184-07b83631b846",
+      "name": "Read Master",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Select Leads To Draft: pick Stage C (Master) rows that still need a draft.\n// Read-only on approval: this node never touches human_approval.\nconst MAX_PER_RUN = 10;\nconst MIN_SCORE = 80;\nconst EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;\nconst BAD_EMAIL_STATUS = ['DISPOSABLE_WARNING', 'INVALID_SYNTAX', 'UNAVAILABLE'];\nconst clean = v => String(v == null ? '' : v).trim();\n\nconst out = [];\nfor (const it of $input.all()) {\n  const r = it.json || {};\n  const id = clean(r.master_lead_id);\n  if (!id) continue;\n  const status = clean(r.outreach_status).toUpperCase();\n  if (status !== '' && status !== 'NOT_SENT') continue;      // DRAFTED / SENT / FAILED are never re-drafted\n  if (clean(r.outreach_draft)) continue;                      // already has a draft\n  const email = clean(r.verified_email);\n  if (!EMAIL_RE.test(email)) continue;\n  if (BAD_EMAIL_STATUS.includes(clean(r.email_status).toUpperCase())) continue;\n  const contact = clean(r.contact_name);\n  const company = clean(r.company_name);\n  const evidenceText = clean(r.evidence);\n  if (!contact || !company || !evidenceText) continue;\n  const score = Number(clean(r.lead_score));\n  if (!(score >= MIN_SCORE)) continue;\n  out.push({ json: {\n    master_lead_id: id,\n    normalized_domain: clean(r.normalized_domain),\n    company_name: company,\n    contact_name: contact,\n    designation: clean(r.designation),\n    verified_email: email,\n    headquarters_location: clean(r.headquarters_location),\n    lead_score: score,\n    evidence_text: evidenceText,\n    evidence_lines: evidenceText.split(' | ').map(s => s.trim()).filter(Boolean).slice(0, 3)\n  } });\n  if (out.length >= MAX_PER_RUN) break;\n}\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "43440e51-8ba6-4fc2-9e63-84f39a34a644",
+      "name": "Select Leads To Draft"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Draft Request: assemble the Groq chat-completions body (prompt = prompts/outreach.system.md).\nconst SYSTEM = \"You write ONE short first-contact business email body for PranavX Labs, an automation studio that builds n8n workflow automations (for example automated lead research, reporting and follow-ups). Follow these rules exactly:\\n1. Use ONLY the facts in the LEAD FACTS block. Never invent clients, results, numbers, prices, awards, meetings, mutual contacts or earlier contact.\\n2. Do not write a greeting, sign-off, signature or footer. Code adds them. Write the body only.\\n3. The body is two short paragraphs, 45 to 80 words in total. Paragraph 1: one specific, true observation taken from the EVIDENCE that shows the sender read their website, put in your own words (do not copy the evidence sentence word for word). Paragraph 2: one sentence on how workflow automation could save a company like theirs time, then one low-pressure question asking whether they would like a short note about it.\\n4. evidence_used: copy ONE evidence line exactly as written (character for character, an exact substring of EVIDENCE, without the leading dash) that paragraph 1 is based on.\\n5. No links, email addresses, phone numbers, emojis or exclamation marks. Do not use the words guarantee, urgent or act now, and do not offer anything for free.\\n6. This is a first contact. Never write \\\"following up\\\", \\\"as discussed\\\" or \\\"re:\\\".\\n7. subject: at most 8 words, plain and honest, contains the company name, no \\\"Re:\\\" or \\\"Fwd:\\\".\\n8. Output JSON only. No markdown fences.\";\nconst OFFER = 'PranavX Labs builds n8n workflow automations for small tech and web companies, such as automated lead research, reporting and follow-ups.';\nconst MAX_LINE = 300;\n\nreturn $input.all().map(it => {\n  const l = it.json;\n  const facts = [\n    'LEAD FACTS',\n    'COMPANY: ' + l.company_name,\n    'CONTACT: ' + l.contact_name + (l.designation ? ', ' + l.designation : ''),\n    l.headquarters_location ? 'LOCATION: ' + l.headquarters_location : null,\n    'OFFER: ' + OFFER,\n    'EVIDENCE:',\n    ...l.evidence_lines.map(s => '- ' + s.slice(0, MAX_LINE))\n  ].filter(x => x !== null).join('\\n');\n  return { json: { ...l, request_body: {\n    model: 'openai/gpt-oss-120b',\n    temperature: 0.2,\n    reasoning_effort: 'low',\n    max_completion_tokens: 1200,\n    messages: [\n      { role: 'system', content: SYSTEM },\n      { role: 'user', content: facts }\n    ],\n    response_format: { type: 'json_schema', json_schema: { name: 'outreach_draft', strict: true, schema: {\n      type: 'object', additionalProperties: false,\n      required: ['subject', 'body', 'evidence_used'],\n      properties: { subject: { type: 'string' }, body: { type: 'string' }, evidence_used: { type: 'string' } }\n    } } }\n  } } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "id": "245a207d-5bf6-42df-9dea-b1e460f8bd65",
+      "name": "Build Draft Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.request_body }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 6000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        0
+      ],
+      "id": "759cfa9b-5a5d-4d80-8920-855ec681cddb",
+      "name": "Groq Draft",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify & Assemble Draft: deterministic checks on the model output, then build the full email text.\n// Pairs each Groq response with its lead by position (Groq Draft keeps item order, even on errors).\nconst SENDER_NAME = 'Anurag';\nconst SENDER_ROLE = 'AI Automation Intern';\nconst SENDER_COMPANY = 'PranavX Labs';\n// NFR-07: replace with the full physical postal address of PranavX Labs before any real send.\nconst SENDER_ADDRESS = 'Maharashtra, India';\nconst BODY_MIN_WORDS = 35, BODY_MAX_WORDS = 90, EMAIL_MAX_WORDS = 119;\n\nconst fold = s => String(s == null ? '' : s).normalize('NFKC')\n  .replace(/[‐-―−]/g, '-').replace(/[‘’]/g, \"'\").replace(/[“”]/g, '\"')\n  .replace(/\\s+/g, ' ').trim().toLowerCase();\nconst words = s => String(s || '').trim().split(/\\s+/).filter(Boolean).length;\nconst istNow = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ') + ' IST';\n\nconst BANNED = /\\b(guarantee[sd]?|urgent|act now|limited time|for free|free (?:of charge|audit|consultation|trial|quote|assessment|demo|report|call|advice|ebook|guide|session)|following up|follow up|as discussed|per our|our call|our meeting|last week|you recently)\\b|100%|\\bre:|\\bfwd?:/i;\nconst UNSUPPORTED_TERMS = ['award', 'trusted by', 'clients such as', 'case stud', 'ranked', 'top-rated', 'certified', 'partner of'];\n\nconst leads = $('Build Draft Request').all().map(x => x.json);\nconst results = $input.all().map(x => x.json);\n\nreturn leads.map((lead, i) => {\n  const res = results[i] || {};\n  const reasons = [];\n  let draft = null;\n\n  if (res.error) {\n    reasons.push('GROQ_ERROR: ' + String((res.error && res.error.message) || res.error).slice(0, 120));\n  } else {\n    const choice = res.choices && res.choices[0];\n    if (!choice) reasons.push('NO_COMPLETION');\n    else {\n      if (choice.finish_reason && choice.finish_reason !== 'stop') reasons.push('INCOMPLETE_' + String(choice.finish_reason).toUpperCase());\n      const raw = String((choice.message && choice.message.content) || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '');\n      try { draft = JSON.parse(raw); } catch (e) { reasons.push('BAD_JSON'); }\n    }\n  }\n\n  let subject = '', body = '', evUsed = '';\n  if (draft) {\n    const dash = s => s.replace(/[\\u2010-\\u2015\\u2212]/g, '-');   // model likes non-breaking hyphens\n    subject = typeof draft.subject === 'string' ? dash(draft.subject.trim()) : '';\n    body = typeof draft.body === 'string' ? dash(draft.body).split(/\\n+/).map(s => s.trim()).filter(Boolean).join('\\n\\n') : '';\n    evUsed = typeof draft.evidence_used === 'string' ? draft.evidence_used.trim().replace(/^[\\s\\-\\u2022*]+/, '') : '';   // tolerate the bullet dash\n    if (!subject || !body || !evUsed) reasons.push('MISSING_FIELD');\n  }\n\n  const factsFold = fold([lead.evidence_text, lead.company_name, lead.contact_name, lead.designation, lead.headquarters_location].join(' '));\n\n  if (draft && reasons.length === 0) {\n    // subject\n    if (subject.length > 80 || words(subject) > 10 || /[\\r\\n]/.test(subject)) reasons.push('SUBJECT_TOO_LONG');\n    const tok = String(lead.company_name || '').split(/[\\s,.\\-|&]+/).find(w => w.length >= 3 && !['the', 'pvt', 'ltd', 'llp', 'private', 'limited', 'and'].includes(w.toLowerCase()));\n    if (tok && !fold(subject).includes(tok.toLowerCase())) reasons.push('SUBJECT_MISSING_COMPANY');\n    // body length\n    const bw = words(body);\n    if (bw < BODY_MIN_WORDS) reasons.push('BODY_TOO_SHORT(' + bw + ')');\n    if (bw > BODY_MAX_WORDS) reasons.push('BODY_TOO_LONG(' + bw + ')');\n    // forbidden content\n    const text = subject + '\\n' + body;\n    if (/https?:\\/\\/|www\\.|\\S+@\\S+\\.\\S+|\\+?\\d[\\d\\s-]{8,}\\d/i.test(text)) reasons.push('CONTAINS_LINK_EMAIL_OR_PHONE');\n    if (/!/.test(text) || /[\\u{1F300}-\\u{1FAFF}\\u{2600}-\\u{27BF}]/u.test(text)) reasons.push('CONTAINS_EXCLAMATION_OR_EMOJI');\n    if (BANNED.test(text)) reasons.push('BANNED_PHRASE');\n    // grounding: the quoted evidence must be real, and the body may not add numbers or claims\n    const ev = fold(evUsed);\n    if (ev.length < 25 || !fold(lead.evidence_text).includes(ev)) reasons.push('EVIDENCE_NOT_VERBATIM');\n    const nums = (body.replace(/\\bn8n\\b/gi, '').match(/\\d[\\d,.]*/g) || []).map(n => n.replace(/[.,]+$/, ''));\n    if (nums.some(n => !factsFold.includes(n))) reasons.push('UNSUPPORTED_NUMBER');\n    const bf = fold(body);\n    if (UNSUPPORTED_TERMS.some(t => bf.includes(t) && !factsFold.includes(t))) reasons.push('UNSUPPORTED_CLAIM');\n  }\n\n  let emailText = '', ok = false, total = 0;\n  if (draft && reasons.length === 0) {\n    const first = String(lead.contact_name).replace(/^(mr|mrs|ms|dr)\\.?\\s+/i, '').trim().split(/\\s+/)[0];\n    const greeting = 'Hello ' + first + ',';\n    const signoff = 'Regards,\\n' + SENDER_NAME + '\\n' + SENDER_ROLE + ', ' + SENDER_COMPANY;\n    total = words(greeting) + words(body) + words(signoff);\n    if (total > EMAIL_MAX_WORDS) reasons.push('EMAIL_OVER_120_WORDS(' + total + ')');\n    else {\n      const footer = '--\\n' + SENDER_COMPANY + ' | ' + SENDER_ADDRESS + '\\nThis is a one-time business enquiry sent to a publicly listed business address. To opt out of future messages, reply with UNSUBSCRIBE.';\n      emailText = [greeting, '', body.replace(/\\r\\n/g, '\\n'), '', signoff, '', footer].join('\\n');\n      ok = true;\n    }\n  }\n\n  return { json: {\n    master_lead_id: lead.master_lead_id,\n    company_name: lead.company_name,\n    verified_email: lead.verified_email,\n    outreach_subject: ok ? subject : '',\n    outreach_draft: ok ? emailText : '',\n    outreach_status: ok ? 'DRAFTED' : 'NOT_SENT',\n    drafted_at: ok ? istNow() : '',\n    draft_notes: ok ? 'OK words=' + total : reasons.join('; ')\n  } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "05c64562-7ff6-4c14-a538-fc9189e1d3ea",
+      "name": "Verify & Assemble Draft"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Stage_C_Master_Approved",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "master_lead_id": "={{ $json.master_lead_id }}",
+            "outreach_subject": "={{ $json.outreach_subject }}",
+            "outreach_draft": "={{ $json.outreach_draft }}",
+            "outreach_status": "={{ $json.outreach_status }}",
+            "drafted_at": "={{ $json.drafted_at }}",
+            "draft_notes": "={{ $json.draft_notes }}"
+          },
+          "matchingColumns": [
+            "master_lead_id"
+          ],
+          "schema": [
+            {
+              "id": "master_lead_id",
+              "displayName": "master_lead_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_subject",
+              "displayName": "outreach_subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_draft",
+              "displayName": "outreach_draft",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outreach_status",
+              "displayName": "outreach_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "drafted_at",
+              "displayName": "drafted_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "draft_notes",
+              "displayName": "draft_notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1440,
+        0
+      ],
+      "id": "a4a5d2f9-a842-4046-aa47-da312e75e75a",
+      "name": "Write Draft",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "REPLACE_WITH_YOUR_CREDENTIAL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Master",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Master": {
+      "main": [
+        [
+          {
+            "node": "Select Leads To Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Leads To Draft": {
+      "main": [
+        [
+          {
+            "node": "Build Draft Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Draft Request": {
+      "main": [
+        [
+          {
+            "node": "Groq Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Draft": {
+      "main": [
+        [
+          {
+            "node": "Verify & Assemble Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify & Assemble Draft": {
+      "main": [
+        [
+          {
+            "node": "Write Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata"
+  },
+  "tags": []
+}

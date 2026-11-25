@@ -12,13 +12,13 @@ TC-01 to TC-14 are the 14 cases the handbook defines. The handbook asks for 24 c
 | TC-02 | max_leads_limit 500 is clamped to 100 | PASS | offline only |  |
 | TC-03 | SerpAPI 429 -> retried up to 3 times; run continues | PARTIAL | offline only | retries 3 times and the run survives a 429, but the wait is a fixed 5000 ms, not exponential (n8n core has no backoff setting) |
 | TC-04 | Landing page 404/503 -> logged as SCRAPE_FAILED, pipeline continues | PASS | offline only |  |
-| TC-05 | Scraper timeout over 10 s is aborted cleanly | PASS | offline only |  |
+| TC-05 | Scraper timeout over 10 s is aborted cleanly | PASS | Day 18 live (a page timed out after 10 s, was quarantined as ERR_NO_PAGE_CONTENT, the run continued) |  |
 | TC-06 | Page with no emails -> verified_email null, role penalised | PASS | offline only |  |
 | TC-07 | Exclusion term "staffing" -> veto, score 0, quarantined | PASS | offline only |  |
 | TC-08 | Invalid email contact@@apex..com -> INVALID_SYNTAX | PASS | offline only |  |
 | TC-09 | High-quality lead scores 80 or more -> MASTER | PASS | Day 16 live (Master rows) |  |
 | TC-10 | Marginal lead scores 60-79 -> REVIEW | PASS | Day 16 live (Review rows) |  |
-| TC-11 | Domain dedup blocks a re-processed domain (same run and later run) | PASS | offline only |  |
+| TC-11 | Domain dedup blocks a re-processed domain (same run and later run) | PASS | Day 18 live (Jaipur was run twice; Master still holds 8 unique domains) |  |
 | TC-12 | PENDING approval -> dispatch halted, nothing sent | PASS | Day 15 live (Gmail test mode) |  |
 | TC-13 | Suppression match -> aborted, status SUPPRESSED | PASS | Day 15 live |  |
 | TC-14 | Syntax error in a JS node -> Error Trigger alert to Telegram | PASS | Day 17 live (Telegram message received) |  |
@@ -37,14 +37,19 @@ TC-01 to TC-14 are the 14 cases the handbook defines. The handbook asks for 24 c
 
 - TC-03 is PARTIAL: the retry count (3) and the survive-a-429 behaviour are met, the wait between tries is a fixed 5 s, not exponential. n8n has no backoff option on the HTTP node; a loop with a Wait node would be needed.
 - Offline cases prove the code logic. Live evidence is only claimed where the behaviour was seen in n8n on the day shown.
-- API retry recovery (>= 95%) and mean lead time (<= 45 s) are measured from real n8n executions, see the metrics section once filled in.
+- Mean lead time was not measured from n8n executions; the figure below is an estimate from the configured pacing.
+- The Review tab has no approval column, so a Review record cannot be approved in place.
 
-## Benchmark metrics (fill from live data)
+## Benchmark metrics
 
-| Metric | Target | Measured | Source |
+Measured on the live sheets of 2026-11-25. Full detail and the record-by-record table are in `docs/precision-audit.md`.
+
+| Metric | Target | Measured | Status |
 |---|---|---|---|
-| Accepted-lead precision | >= 85% (min 80%) | TBD | manual audit of Master rows |
-| Duplicate leakage | 0% | TBD | Master domain column |
-| Evidence citation coverage | 100% | TBD | Master evidence column |
-| Mean lead time | <= 45 s | TBD | n8n execution time / leads |
-| API retry recovery | >= 95% | TBD | n8n execution log |
+| Accepted-lead precision | >= 85% (min 80%) | 4 of 8 fully evidenced from the stored text (50%, a floor); 0 wrong or invented leads found; text-only, not a site check | NOT MET on text; needs manual check |
+| Duplicate leakage | 0% | 0 of 8 Master domains repeated | MET |
+| Evidence citation coverage | 100% | 8 of 8 B2B, 11 of 11 talent records carry a verbatim quote | MET |
+| Mean lead time | <= 45 s (min 90 s) | not measured; about 30 s by configuration (25 s Groq spacing plus scraping) | NOT MEASURED |
+| API retry recovery | >= 95% (min 90%) | before the fix 10 of 20 Groq calls failed; after it the same 20 results gave no ERR_NOT_EXTRACTED rows | MET after fix, one re-run |
+| 20+ verified B2B leads | 20 | 8 Master, 7 Review | NOT MET |
+| 20+ talent leads | 20 | 11 (9 qualified, 2 review) | NOT MET |

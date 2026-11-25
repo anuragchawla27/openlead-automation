@@ -63,7 +63,7 @@ Q('TC-04', 'FR-05', 'Landing page 404/503 -> logged as SCRAPE_FAILED, pipeline c
 Q('TC-05', 'NFR-02', 'Scraper timeout over 10 s is aborted cleanly', () => {
   const t = clean({ error: { message: 'timeout of 10000ms exceeded' } });
   return M.N['Scrape Page'].parameters.options.timeout === 10000 && M.N['Scrape Page'].onError === 'continueRegularOutput' && t.scrape_status === 'SCRAPE_FAILED' && /timeout/.test(t.scrape_error) || JSON.stringify(t);
-});
+}, 'Day 18 live (a page timed out after 10 s, was quarantined as ERR_NO_PAGE_CONTENT, the run continued)');
 Q('TC-06', 'FR-08', 'Page with no emails -> verified_email null, role penalised', () => {
   const v = vc({ key_decision_maker: { full_name: 'Jane Doe', designation: 'CEO', public_business_email: null }, company_contact_email: null, page_text: 'Jane Doe, CEO of Acme Web Studio' });
   const s = score({ decision_maker_supported: false });
@@ -81,7 +81,7 @@ Q('TC-11', 'FR-12', 'Domain dedup blocks a re-processed domain (same run and lat
   const sd = {}; const r1 = mrun('Dedup Check', [{ normalized_domain: 'a.com', extraction_status: 'EXTRACTED' }, { normalized_domain: 'www.a.com', extraction_status: 'EXTRACTED' }], {}, sd);
   const r2 = mrun('Dedup Check', [{ normalized_domain: 'a.com', extraction_status: 'EXTRACTED' }], {}, sd);
   return r1[0].dedup_status === 'NEW' && r1[1].dedup_status === 'DUPLICATE_IN_RUN' && r2[0].dedup_status === 'DUPLICATE_PREVIOUS_RUN' || JSON.stringify([r1.map(x => x.dedup_status), r2[0].dedup_status]);
-});
+}, 'Day 18 live (Jaipur was run twice; Master still holds 8 unique domains)');
 Q('TC-12', 'FR-16', 'PENDING approval -> dispatch halted, nothing sent', () => act([row({ human_approval: 'PENDING' })], 'SEND').length === 0 && act([row()], 'SEND').length === 1, 'Day 15 live (Gmail test mode)');
 Q('TC-13', 'FR-17', 'Suppression match -> aborted, status SUPPRESSED', () => {
   const sup = act([row()], 'SUPPRESS', [{ email: 'gigante@gigante.co.in' }]);
@@ -117,8 +117,8 @@ const md = ['# QA execution report (Day 18)', '', 'Run with `node tests/qa/qa-ma
   '## Known gaps (honest list)', '',
   '- TC-03 is PARTIAL: the retry count (3) and the survive-a-429 behaviour are met, the wait between tries is a fixed 5 s, not exponential. n8n has no backoff option on the HTTP node; a loop with a Wait node would be needed.',
   '- Offline cases prove the code logic. Live evidence is only claimed where the behaviour was seen in n8n on the day shown.',
-  '- API retry recovery (>= 95%) and mean lead time (<= 45 s) are measured from real n8n executions, see the metrics section once filled in.', '',
-  '## Benchmark metrics (fill from live data)', '', '| Metric | Target | Measured | Source |', '|---|---|---|---|',
-  '| Accepted-lead precision | >= 85% (min 80%) | TBD | manual audit of Master rows |', '| Duplicate leakage | 0% | TBD | Master domain column |', '| Evidence citation coverage | 100% | TBD | Master evidence column |', '| Mean lead time | <= 45 s | TBD | n8n execution time / leads |', '| API retry recovery | >= 95% | TBD | n8n execution log |', ''].join('\n');
+  '- Mean lead time was not measured from n8n executions; the figure below is an estimate from the configured pacing.', '- The Review tab has no approval column, so a Review record cannot be approved in place.', '',
+  '## Benchmark metrics', '', 'Measured on the live sheets of 2026-11-25. Full detail and the record-by-record table are in `docs/precision-audit.md`.', '', '| Metric | Target | Measured | Status |', '|---|---|---|---|',
+  '| Accepted-lead precision | >= 85% (min 80%) | 4 of 8 fully evidenced from the stored text (50%, a floor); 0 wrong or invented leads found; text-only, not a site check | NOT MET on text; needs manual check |', '| Duplicate leakage | 0% | 0 of 8 Master domains repeated | MET |', '| Evidence citation coverage | 100% | 8 of 8 B2B, 11 of 11 talent records carry a verbatim quote | MET |', '| Mean lead time | <= 45 s (min 90 s) | not measured; about 30 s by configuration (25 s Groq spacing plus scraping) | NOT MEASURED |', '| API retry recovery | >= 95% (min 90%) | before the fix 10 of 20 Groq calls failed; after it the same 20 results gave no ERR_NOT_EXTRACTED rows | MET after fix, one re-run |', '| 20+ verified B2B leads | 20 | 8 Master, 7 Review | NOT MET |', '| 20+ talent leads | 20 | 11 (9 qualified, 2 review) | NOT MET |', ''].join('\n');
 if (process.argv[2] === '--write') { fs.writeFileSync(path.join(root, 'docs/qa-report.md'), md); console.log('wrote docs/qa-report.md'); }
 process.exitCode = fail ? 1 : 0;
