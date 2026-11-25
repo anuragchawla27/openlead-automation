@@ -196,3 +196,10 @@ Known gaps:
 - Role fit is generous (a software internship seeker scored 100) and real-page scores saturate, so a person must confirm each lead.
 - The model's quote varies between runs, so the same Reddit post can be REVIEW in one run and rejected in the next. Writes upsert and never remove old rows.
 - Reddit snippet leads are REVIEW only and need a person to confirm.
+
+## Day 18b: Groq pacing for the extraction nodes
+
+- A live Jaipur run had 9 Groq 429 errors and 1 schema error in 20 calls. One call uses about 2.4k tokens, so one call every 6 s is about 24k tokens a minute, above the free-tier limit.
+- Groq Extract and its fallback now wait 25 s between calls. A 40-lead run takes about 15 minutes longer.
+- A 400 json_validate_failed is now retryable, so the fallback model gets a second try.
+- Not changed: model reasoning, prompt, verifier.

@@ -22,6 +22,7 @@ const perSec = n => { const b = rate(n); return b ? b.batchSize / (b.batchInterv
 T('RL: SerpAPI is limited to <= 1 request per second', rate('SerpAPI Request') && perSec('SerpAPI Request') <= 1, JSON.stringify(rate('SerpAPI Request')));
 T('RL: Groq extract keeps <= 1 request per 6 s (free-tier tokens)', rate('Groq Extract').batchSize === 1 && rate('Groq Extract').batchInterval >= 6000);
 T('RL: Groq fallback keeps <= 1 request per 8 s', rate('Groq Extract (fallback)').batchSize === 1 && rate('Groq Extract (fallback)').batchInterval >= 8000);
+T('RL: Groq extract and fallback keep <= 1 request per 25 s (~2.4k tokens per call stays under the 8k tokens-per-minute free limit)', rate('Groq Extract').batchInterval >= 25000 && rate('Groq Extract (fallback)').batchInterval >= 25000);
 T('RL: page scrapes are limited to <= 3 per second', perSec('Scrape Page') <= 3 && perSec('Scrape About') <= 3);
 T('RL: scrape keeps its 10 s timeout and neverError after the change', N['Scrape Page'].parameters.options.timeout === 10000 && N['Scrape Page'].parameters.options.response.response.neverError === true);
 const http = wf.nodes.filter(n => n.type === 'n8n-nodes-base.httpRequest');
