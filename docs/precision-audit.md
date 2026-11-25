@@ -7,6 +7,7 @@ Data: the live sheets exported on 2026-11-25 after the Jaipur B2B run (campaign 
 - The handbook asks for a manual audit of 50 random Stage C records. Only **8** Master records exist from one city, so **all 8 were audited**. Paying for more cities would only burn SerpAPI and Groq credits, so the sample was kept small on purpose.
 - This audit reads the evidence stored in the sheet. It does **not** open each company website. The result is therefore a **text-only estimate**. A person who opens the sites and fills the `audit` column can replace it with the real figure.
 - Nothing here is used to pass or fail the build. It is the honest state of the data.
+- **Update 2026-11-25:** the intern then opened the websites of all 8 Master companies. See "Manual site check" below. That check was done by hand and reported by the intern; it was not repeated independently.
 
 ## B2B Master (8 records, target: web development agencies in Jaipur, 11-50 people, founder or CEO)
 
@@ -33,9 +34,21 @@ A record is **fully evidenced** when the stored quotes name the decision maker A
 | Duplicate leakage in Master (same domain twice) | 0% | **0 of 8 = 0%** |
 | Evidence citation coverage (at least 1 verbatim quote per Master record) | 100% | **8 of 8 = 100%** |
 
-**Reading of the precision number.** The 50% is a floor, not a defect count: it counts four records whose quotes do not on their own prove both the person and the city. None of the eight shows a wrong company or an invented person. The real precision can only be set by opening the four "partly" sites. Until that is done the report does not claim the 85% target is met.
+**Reading of the text-only number.** The 50% is a floor, not a defect count: it counts four records whose quotes do not on their own prove both the person and the city. None of the eight shows a wrong company or an invented person. The manual site check below settled the question.
 
 **Cause and the cheap fix (not applied).** Master needs score 80 or more. Geography and decision maker are scored from the whole page text, but only up to three quotes are stored. A rule "the stored quotes must name the decision maker, otherwise cap at Review" would move Qrologic, Dribble and Groot to Review and lift the text-only precision to 4 of 5 (80%). It was not applied on the last day because it changes routing and has not been run live. It is listed under known gaps.
+
+## Manual site check (2026-11-25)
+
+The intern opened the company websites and checked that the named person is the real founder or CEO, with the name matching, and that the company is based in Jaipur. Screenshots were kept for Qrologic (office in Jhotwara, Jaipur; `info@qrologic.com` matches the stored email), Dribble Software (registered office in Jaipur) and Groot Software (office in Jaipur; `info@grootsoftware.com` matches the stored email).
+
+| Measure | Target | Result |
+|---|---|---|
+| Records checked by hand | 50 | 8 (all that exist) |
+| Correct company, correct founder or CEO name, based in Jaipur | 85% (min 80%) | **8 of 8 = 100%** (reported by the intern) |
+| Company size 11-50 confirmed | n/a | not checked for most; Matply states 30+ engineers; Arthonsys was earlier reported by the model as 51-200 and its size was not verified |
+
+Reading: the four records the stored text could not fully prove were all correct on the live sites. The 50% in the table above is therefore a limit of how much evidence the code stores, not a count of wrong leads. The size range was not part of the check, so "precision" here means right company, right person, right city.
 
 ## Review queue (7 records)
 
@@ -73,7 +86,7 @@ An earlier run had produced 16 talent rows; the tab was cleared before this expo
 
 | Benchmark | Target | Status |
 |---|---|---|
-| Accepted-lead precision | 85% (min 80%) | Not met on text-only audit (50%, floor); no wrong leads found; needs a manual site check to settle |
+| Accepted-lead precision | 85% (min 80%) | **Met on the manual site check: 8 of 8** (company, person, city; reported by the intern). Text-only floor was 50% |
 | Duplicate leakage | 0% | Met (0 of 8) |
 | Evidence citation coverage | 100% | Met (8 of 8 B2B, 11 of 11 talent) |
 | Mean lead time | 45 s (min 90 s) | Not measured; about 30 s by configuration |

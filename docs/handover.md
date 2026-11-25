@@ -17,7 +17,7 @@ Built to run locally in n8n (Docker). The language model is **Groq `openai/gpt-o
 | Gmail dispatch with approval gate | Done (test mode default) | `docs/dispatch.md` |
 | Telegram alerts | Done | `docs/telemetry.md` |
 | QA execution report (24 cases) | Done: 23 PASS, 1 PARTIAL, 0 FAIL | `docs/qa-report.md`, run `node tests/qa/qa-matrix.js` |
-| Precision audit | Done on all existing records, text-only | `docs/precision-audit.md` |
+| Precision audit | Done on all existing records: text audit plus a manual site check of all 8 | `docs/precision-audit.md` |
 | 20+ verified B2B leads | **Not met**: 8 Master, 7 Review | live sheet |
 | 20+ talent leads | **Not met**: 11 (9 qualified, 2 review) | live sheet |
 | Architecture diagrams (SVG) | Done | `docs/architecture.md`, `docs/architecture/*.svg` |
@@ -30,7 +30,7 @@ Built to run locally in n8n (Docker). The language model is **Groq `openai/gpt-o
 
 | Benchmark | Target | Result |
 |---|---|---|
-| Accepted-lead precision | 85% (min 80%) | Not confirmed. Text-only floor 4 of 8 fully evidenced; no wrong or invented lead found. Needs a manual site check. |
+| Accepted-lead precision | 85% (min 80%) | Met: 8 of 8 correct company, person and city on a manual site check by the intern (text-only floor was 4 of 8). Company size was not checked. |
 | Duplicate leakage | 0% | 0 of 8 |
 | Evidence citation coverage | 100% | 100% |
 | Mean lead time | 45 s (min 90 s) | Not measured; about 30 s by configuration |
@@ -39,7 +39,7 @@ Built to run locally in n8n (Docker). The language model is **Groq `openai/gpt-o
 ## Known gaps and honest limits
 
 1. **Lead volume.** 8 Master and 11 talent leads, not 20. Reaching 20 needs more cities or searches, which cost SerpAPI and Groq credits.
-2. **Precision.** Four Master records (Qrologic, Dribble, Groot, Arthonsys) are not fully proven by their stored quotes. A person must open those sites. Possible fix, not built: cap a lead at Review unless the stored quotes name the decision maker.
+2. **Evidence stored is thin.** Four Master records (Qrologic, Dribble, Groot, Arthonsys) are not fully proven by their stored quotes, although a manual site check found all four correct. Possible fix, not built: cap a lead at Review unless the stored quotes name the decision maker.
 3. **Company size.** The 11-50 range is scored but not enforced; Arthonsys (reported 51-200) reached Master.
 4. **Retry delay is fixed 5 s, not exponential** (TC-03 PARTIAL). n8n has no backoff option on the HTTP node.
 5. **Role fit for talent is generous** (a full-stack internship seeker scored 100 for an AI search), so a person confirms each talent lead. Reddit snippet-only leads are REVIEW at most.

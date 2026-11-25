@@ -46,7 +46,7 @@ Measured on the live sheets of 2026-11-25. Full detail and the record-by-record 
 
 | Metric | Target | Measured | Status |
 |---|---|---|---|
-| Accepted-lead precision | >= 85% (min 80%) | 4 of 8 fully evidenced from the stored text (50%, a floor); 0 wrong or invented leads found; text-only, not a site check | NOT MET on text; needs manual check |
+| Accepted-lead precision | >= 85% (min 80%) | 8 of 8 correct company, person and city on a manual site check by the intern (text-only floor was 4 of 8); company size not checked | MET (manual check) |
 | Duplicate leakage | 0% | 0 of 8 Master domains repeated | MET |
 | Evidence citation coverage | 100% | 8 of 8 B2B, 11 of 11 talent records carry a verbatim quote | MET |
 | Mean lead time | <= 45 s (min 90 s) | not measured; about 30 s by configuration (25 s Groq spacing plus scraping) | NOT MEASURED |
