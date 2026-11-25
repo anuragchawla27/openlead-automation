@@ -89,6 +89,8 @@ for (const [label, name, refs] of [['VE', 'Verify Extraction', { 'Build LLM Cont
   T(label + ': error description and code are kept for diagnosis', /TPD/.test(detail.extraction_error) && /429/.test(detail.extraction_error));
   const hard = run(name, [{ error: { message: 'Invalid API key', httpCode: '401' } }], refs)[0];
   T(label + ': auth error is NOT retried', hard.retryable === false);
+  const sch = run(name, [{ error: { message: '400 - "{\\"error\\":{\\"message\\":\\"Generated JSON does not match the expected schema. Please adjust your prompt.\\",\\"code\\":\\"json_validate_failed\\"}}"' } }], refs)[0];
+  T(label + ': Groq 400 json_validate_failed (model broke the schema) is retried on the fallback model', sch.retryable === true, JSON.stringify(sch.retryable));
   const fenced = go('```json\n' + JSON.stringify(model()) + '\n```');
   T(label + ': markdown-fenced JSON tolerated', fenced.extraction_status === 'EXTRACTED');
 }
